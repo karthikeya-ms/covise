@@ -637,8 +637,142 @@ void Lamure::preFrame() {
             m_edit_tool->update();
     }
 
+    if (m_settings.lod_auto_fps) {
+        double realDur = opencover::cover->frameDuration();
+        if (realDur < 1e-4) {
+            realDur = 1e-4; // Cap at 10000 FPS to avoid div by zero.
+        }
+        const float dt = std::max(1e-4f, static_cast<float>(realDur));
+        const float current_fps = static_cast<float>(1.0 / realDur);
+
+        if (!m_lod_auto_fps_was_enabled) {
+            m_lod_auto_fps_was_enabled = true;
+            m_smoothed_fps_ = current_fps;
+            m_pid_integral = 0.0f;
+            m_pid_prev_error = 0.0f;
+            m_pid_output_bias = m_settings.lod_error;
+            m_pid_prev_target_fps = m_settings.lod_fps_target;
+            m_prev_lod_error_for_sensitivity = m_settings.lod_error;
+            m_prev_smoothed_fps_for_sensitivity = m_smoothed_fps_;
+            m_lod_fps_sensitivity = 0.0f;
+        }
+
+        if (std::abs(m_settings.lod_fps_target - m_pid_prev_target_fps) > 1e-4f) {
+            m_pid_integral = 0.0f;
+            m_pid_prev_error = 0.0f;
+            m_pid_output_bias = m_settings.lod_error;
+            m_pid_prev_target_fps = m_settings.lod_fps_target;
+        }
+
+        if (current_fps < m_smoothed_fps_) {
+            m_smoothed_fps_ = 0.5f * m_smoothed_fps_ + 0.5f * current_fps; // Fast reaction to drops.
+        } else {
+            m_smoothed_fps_ = 0.9f * m_smoothed_fps_ + 0.1f * current_fps; // Slow recovery.
+        }
+
+        const float output_span = std::max(1e-3f, m_settings.lod_error_max - m_settings.lod_error_min);
+        const float raw_error = m_settings.lod_fps_target - m_smoothed_fps_;
+        const float deadband = std::max(0.0f, m_settings.lod_fps_tolerance);
+        const bool outside_deadband = std::abs(raw_error) > deadband;
+        const float error = outside_deadband ? raw_error : 0.0f;
+
+        const float d_lod = m_settings.lod_error - m_prev_lod_error_for_sensitivity;
+        const float d_fps = m_smoothed_fps_ - m_prev_smoothed_fps_for_sensitivity;
+        const float lod_delta_eps = std::max(1e-3f, 0.0025f * output_span);
+        if (std::abs(d_lod) > lod_delta_eps) {
+            const float sensitivity_inst = d_fps / d_lod;
+            if (std::isfinite(sensitivity_inst)) {
+                if (!std::isfinite(m_lod_fps_sensitivity) || std::abs(m_lod_fps_sensitivity) < 1e-6f) {
+                    m_lod_fps_sensitivity = sensitivity_inst;
+                } else {
+                    m_lod_fps_sensitivity = 0.90f * m_lod_fps_sensitivity + 0.10f * sensitivity_inst;
+                }
+            }
+        }
+        m_prev_lod_error_for_sensitivity = m_settings.lod_error;
+        m_prev_smoothed_fps_for_sensitivity = m_smoothed_fps_;
+
+        const float sensitivity_mag = std::abs(m_lod_fps_sensitivity);
+        const float sensitivity_norm = std::clamp(sensitivity_mag / (sensitivity_mag + 0.5f), 0.0f, 1.0f);
+        const float sensitivity_factor = 0.15f + 0.85f * sensitivity_norm;
+
+        const float target_fps = std::max(1.0f, m_settings.lod_fps_target);
+        const float normalized_error = std::clamp(std::abs(raw_error) / target_fps, 0.0f, 1.0f);
+
+        const float gain_boost = 1.0f + 3.0f * normalized_error;
+        const float kp_eff = m_settings.pid_kp * gain_boost * sensitivity_factor;
+        const float ki_eff = m_settings.pid_ki * (1.0f + 2.0f * normalized_error) * sensitivity_factor;
+        const float kd_eff = m_settings.pid_kd * sensitivity_factor;
+
+        const float derivative = (error - m_pid_prev_error) / dt;
+        const float integral_candidate = m_pid_integral + error * dt;
+
+        float integral_limit = output_span;
+        if (std::abs(ki_eff) > 1e-6f) {
+            integral_limit = output_span / std::abs(ki_eff);
+        }
+        const float bounded_integral = std::clamp(integral_candidate, -integral_limit, integral_limit);
+
+        // Recenter controller output around current state each frame so
+        // persistent FPS errors cannot get "stuck" near low LOD thresholds.
+        m_pid_output_bias = m_settings.lod_error;
+        const auto pid_output = [&](float integral_value) -> float {
+            return m_pid_output_bias
+                + kp_eff * error
+                + ki_eff * integral_value
+                + kd_eff * derivative;
+        };
+
+        const float unclamped_output = pid_output(bounded_integral);
+        const float limit_eps = std::max(1e-4f, 0.002f * output_span);
+        const bool at_upper_limit = m_settings.lod_error >= (m_settings.lod_error_max - limit_eps);
+        const bool at_lower_limit = m_settings.lod_error <= (m_settings.lod_error_min + limit_eps);
+        const bool unreachable_by_limits =
+            (at_upper_limit && raw_error > deadband) || (at_lower_limit && raw_error < -deadband);
+        if (unreachable_by_limits) {
+            m_pid_integral *= 0.90f;
+        }
+
+        const bool saturating_high = unclamped_output > m_settings.lod_error_max && error > 0.0f;
+        const bool saturating_low = unclamped_output < m_settings.lod_error_min && error < 0.0f;
+        if (!saturating_high && !saturating_low) {
+            m_pid_integral = bounded_integral;
+        }
+        if (!outside_deadband) {
+            m_pid_integral *= 0.98f;
+        }
+
+        const float requested_output = std::clamp(pid_output(m_pid_integral), m_settings.lod_error_min, m_settings.lod_error_max);
+        float delta_output = requested_output - m_settings.lod_error;
+        const float min_step_per_sec = (0.05f + 0.30f * normalized_error) * output_span * sensitivity_factor;
+        const float max_step_per_sec = (0.35f + 1.65f * normalized_error) * output_span * sensitivity_factor;
+        const float min_step = min_step_per_sec * dt;
+        const float max_step = std::max(min_step, max_step_per_sec * dt);
+        if (outside_deadband && !unreachable_by_limits && sensitivity_factor > 0.2f) {
+            if (error > 0.0f && delta_output < min_step) {
+                delta_output = min_step;
+            } else if (error < 0.0f && delta_output > -min_step) {
+                delta_output = -min_step;
+            }
+        }
+        delta_output = std::clamp(delta_output, -max_step, max_step);
+        m_settings.lod_error = std::clamp(m_settings.lod_error + delta_output, m_settings.lod_error_min, m_settings.lod_error_max);
+        m_pid_prev_error = error;
+
+        // Sync UI with new values.
+        if (m_ui) {
+            m_ui->update();
+        }
+    } else if (m_lod_auto_fps_was_enabled) {
+        m_lod_auto_fps_was_enabled = false;
+        m_pid_integral = 0.0f;
+        m_pid_prev_error = 0.0f;
+        m_pid_output_bias = m_settings.lod_error;
+    }
+
 #ifdef _WIN32
     float deltaTime = std::clamp(float(opencover::cover->frameDuration()), 1.0f / 60.0f, 1.0f / 15.0f);
+
     float moveAmount = 1000.0f * deltaTime;
     osg::Matrix m = opencover::VRSceneGraph::instance()->getTransform()->getMatrix();
     if (GetAsyncKeyState(VK_NUMPAD4) & 0x8000) m.postMult(osg::Matrix::translate(+moveAmount, 0.0, 0.0));
@@ -751,22 +885,6 @@ void Lamure::dumpModelParentChains() const
         }
     }
     dump("", 0);
-}
-
-void Lamure::resetVrmlRootTransform(osg::Node* node)
-{
-    osg::Node* current = node;
-    while (current) {
-        if (current->getName() == "VRMLRoot") {
-            if (auto* mt = dynamic_cast<osg::MatrixTransform*>(current)) {
-                mt->setMatrix(osg::Matrixd::identity());
-            }
-            break;
-        }
-        if (current->getNumParents() == 0)
-            break;
-        current = current->getParent(0);
-    }
 }
 
 void Lamure::detachFromParents(osg::Node* node)
@@ -938,7 +1056,6 @@ void Lamure::rebuildRenderer()
             if (mid < m_model_parents.size())
                 parent = m_model_parents[mid].get();
             if (parent) {
-                resetVrmlRootTransform(parent);
                 parent->addChild(sn.model_transform.get());
             }
         }
@@ -1030,6 +1147,11 @@ void Lamure::loadSettingsFromCovise() {
     s.size_of_provenance = getNum<int>("value", (std::string(root) + ".size_of_provenance").c_str(), s.size_of_provenance);
     s.pause_frames = static_cast<uint32_t>(std::max(0, getNum<int>("value", (std::string(root) + ".pause_frames").c_str(), s.pause_frames)));
     s.lod_error = getNum<float>("value", (std::string(root) + ".lod_error").c_str(), s.lod_error);
+    s.lod_auto_fps = getOn((std::string(root) + ".lod_auto_fps").c_str(), s.lod_auto_fps);
+    s.lod_fps_target = getNum<float>("value", (std::string(root) + ".lod_fps_target").c_str(), s.lod_fps_target);
+    s.lod_fps_tolerance = getNum<float>("value", (std::string(root) + ".lod_fps_tolerance").c_str(), s.lod_fps_tolerance);
+    s.lod_error_min = getNum<float>("value", (std::string(root) + ".lod_error_min").c_str(), s.lod_error_min);
+    s.lod_error_max = getNum<float>("value", (std::string(root) + ".lod_error_max").c_str(), s.lod_error_max);
 
     // ---- Tuning / Flags ----
     s.pvs_culling          = getOn((std::string(root) + ".pvs_culling").c_str(),          s.pvs_culling);
@@ -1597,6 +1719,11 @@ bool Lamure::writeSettingsJson(const Lamure::Settings& s, const std::string& out
     add_i ("size_of_provenance", s.size_of_provenance);
     add_bool("lod_update", s.lod_update);
     add_f ("lod_error", s.lod_error);
+    add_bool("lod_auto_fps", s.lod_auto_fps);
+    add_f ("lod_fps_target", s.lod_fps_target);
+    add_f ("lod_fps_tolerance", s.lod_fps_tolerance);
+    add_f ("lod_error_min", s.lod_error_min);
+    add_f ("lod_error_max", s.lod_error_max);
 
     // GUI / Travel
     add_i ("gui",          s.gui);
