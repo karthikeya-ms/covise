@@ -1,0 +1,38 @@
+<?xml version="1.0"?>
+
+<COCONFIG version="1">
+
+<GLOBAL>
+  <COVER>
+    <NavigationMode value="XForm" />
+
+    <Plugin>
+      <Kite value="off" />
+
+      <WINSENTWindFarm value="on">
+        <!-- Cluster/shared dataset location -->
+        <!-- Adjust this path if your cluster mount point differs -->
+        <DataPath value="/data/hlrs/winsent/MultiSensorSWE1" />
+
+        <!-- winsent_terrain_yup.obj/.ive are Y-up and rotated in plugin -->
+        <CoordinateMode value="YUp" />
+        <TerrainEnabled value="true" />
+
+        <!-- Optional explicit files; otherwise plugin defaults to DataPath -->
+        <TerrainModel value="/data/hlrs/winsent/MultiSensorSWE1/winsent_terrain_yup.obj" />
+        <TerrainModelFallback value="/data/hlrs/winsent/MultiSensorSWE1/winsent_terrain_yup.ive" />
+
+        <!-- Global placement/scale -->
+        <SceneScale value="1.0" />
+        <ScenePosX value="0.0" />
+        <ScenePosY value="0.0" />
+        <ScenePosZ value="0.0" />
+        <SceneRotXDeg value="0.0" />
+        <SceneRotYDeg value="0.0" />
+        <SceneRotZDeg value="0.0" />
+      </WINSENTWindFarm>
+    </Plugin>
+  </COVER>
+</GLOBAL>
+
+</COCONFIG>

@@ -9,17 +9,39 @@
  * License: LGPL 2+ */
 
 #include <cover/coVRPlugin.h>
-#include <cover/coVRPluginSupport.h>
-#include <cover/coInteractor.h>
+
+#include <osg/ref_ptr>
+
+#include <string>
+
+namespace osg
+{
+class MatrixTransform;
+class Node;
+}
 
 class WINSENT : public opencover::coVRPlugin
 {
-    public:
-        WINSENT();
+public:
+    enum class CoordinateMode
+    {
+        ZUp,
+        YUp
+    };
 
-        bool init() override;
-        void preFrame() override;
+    WINSENT();
+    ~WINSENT() override;
 
-    private:
-        void loadCSVFile(const std::string &filename);
-}
+    bool init() override;
+    void preFrame() override;
+
+private:
+    bool loadTerrainLayer(const std::string &dataPath, CoordinateMode mode);
+
+    osg::ref_ptr<osg::Node> loadTerrainModel(const std::string &terrainModelFile) const;
+    static CoordinateMode readCoordinateMode(const std::string &modeText);
+
+    osg::ref_ptr<osg::MatrixTransform> root_;
+};
+
+#endif
