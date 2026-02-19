@@ -48,6 +48,19 @@ inline const char *coBasename(const char *str)
     }
 }
 
+// Convert 3-character month abbreviation to month number (0-11)
+inline int monthNameToNumber(const char *month_str)
+{
+    const char *months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    for (int i = 0; i < 12; i++)
+    {
+        if (strcasecmp(month_str, months[i]) == 0)
+            return i;
+    }
+    return 0; // Default to January if not found
+}
+
 // Module set-up in Constructor
 ReadCSVTime::ReadCSVTime(int argc, char *argv[])
     : coReader(argc, argv, "Read CSV data with timestamps")
@@ -61,9 +74,17 @@ ReadCSVTime::ReadCSVTime(int argc, char *argv[])
     interval_size->setValue(1);
     d_dataFile = NULL;
 
-    const char *dFormatChoice[] = {"2019-01-01T08:15:00","1/1/2019 8:15","01.01.2019 08:15:00","2019-01-01"};
+    const char *dFormatChoice[] = {"2019-01-01T08:15:00","1/1/2019 8:15","01.01.2019 08:15:00","2019-01-01","01-Jan 08:15:00.000"};
     p_dateFormat = addChoiceParam("DateFormat","Select format of datetime");
-    p_dateFormat->setValue(sizeof(dFormatChoice)/sizeof(dFormatChoice[0]), dFormatChoice, 0);
+    int numDataFormats = sizeof(dFormatChoice) / sizeof(dFormatChoice[0]);
+    p_dateFormat->setValue(numDataFormats, dFormatChoice, 0);
+    printf("numDataFormats: %d\n", numDataFormats);
+    printf("Date format choices:\n");
+    printf("0: %s\n", dFormatChoice[0]);
+    printf("1: %s\n", dFormatChoice[1]);
+    printf("2: %s\n", dFormatChoice[2]);
+    printf("3: %s\n", dFormatChoice[3]);
+    printf("4: %s\n", dFormatChoice[4]);
 }
 
 ReadCSVTime::~ReadCSVTime()
@@ -243,7 +264,7 @@ int ReadCSVTime::readASCIIData()
         int col_for_z = z_col->getValue() - 1;
         int col_for_id = ID_col->getValue() - 1;
         int col_for_time = time_col->getValue() - 1;
-        int MAX_TIME_INT = interval_size->getValue();
+        float MAX_TIME_FLOAT = interval_size->getValue();
         int dFormat = p_dateFormat->getValue();
 
 
@@ -359,9 +380,17 @@ int ReadCSVTime::readASCIIData()
                    //strptime(time_str, "%Y-%m-%d",&tm);
                    sscanf(time_str, "%d-%d-%d",&tm.tm_year,&tm.tm_mon,&tm.tm_mday);
                 }
+                else if (dFormat == 4)
+                {
+                     char month_str[4] = "";
+                     sscanf(time_str, "%d-%3s %d:%d:%d.%f",&tm.tm_mday, month_str, &tm.tm_hour,&tm.tm_min,&tm.tm_sec,&tmpdat[0]);
+                     tm.tm_mon = monthNameToNumber(month_str);
+                     //year is not given in this format -> set to 2025
+                     tm.tm_year = 125; // 2025 - 1900
+                }
                 time_t t = mktime(&tm);
-                //printf("TIME: %s\n", ctime(&t));
-                if ((difftime(t, last_t) > (MAX_TIME_INT) ) || CurrRow == 0 )
+                std::cout << "TIME: " << ctime(&t) << std::endl;
+                if ((difftime(t, last_t) > (MAX_TIME_FLOAT) ) || CurrRow == 0 )
                 {
                      timeIntIdx.push_back(CurrRow);
                      last_t = t;
