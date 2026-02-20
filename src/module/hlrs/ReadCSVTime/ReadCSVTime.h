@@ -58,7 +58,7 @@ private:
     // ------------------------------------------------------------
     // -- parameters
     coChoiceParam *x_col, *y_col, *z_col, *time_col, *ID_col;
-    coIntScalarParam *interval_size;
+    coFloatParam *interval_size;
     coChoiceParam *p_dateFormat;
 
     // utility functions

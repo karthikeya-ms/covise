@@ -16,7 +16,6 @@
  *
  *******************************************************************/
 
-
 #include "ReadCSVTime.h"
 
 #ifndef _WIN32
@@ -51,8 +50,8 @@ inline const char *coBasename(const char *str)
 // Convert 3-character month abbreviation to month number (0-11)
 inline int monthNameToNumber(const char *month_str)
 {
-    const char *months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    const char *months[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
     for (int i = 0; i < 12; i++)
     {
         if (strcasecmp(month_str, months[i]) == 0)
@@ -68,14 +67,14 @@ ReadCSVTime::ReadCSVTime(int argc, char *argv[])
     x_col = addChoiceParam("x_col", "Select column for x-coordinates");
     y_col = addChoiceParam("y_col", "Select column for y-coordinates");
     z_col = addChoiceParam("z_col", "Select column for z-coordinates");
-    ID_col = addChoiceParam("ID","Select column for ID");
-    time_col = addChoiceParam("timestamp","Select column for timestamp");
-    interval_size = addInt32Param("time_interval","Interval length in seconds");
-    interval_size->setValue(1);
+    ID_col = addChoiceParam("ID", "Select column for ID");
+    time_col = addChoiceParam("timestamp", "Select column for timestamp");
+    interval_size = addFloatParam("time_interval", "Interval length in seconds");
+    interval_size->setValue(1.0f);
     d_dataFile = NULL;
 
-    const char *dFormatChoice[] = {"2019-01-01T08:15:00","1/1/2019 8:15","01.01.2019 08:15:00","2019-01-01","01-Jan 08:15:00.000"};
-    p_dateFormat = addChoiceParam("DateFormat","Select format of datetime");
+    const char *dFormatChoice[] = { "2019-01-01T08:15:00", "1/1/2019 8:15", "01.01.2019 08:15:00", "2019-01-01", "01-Jan 08:15:00.000" };
+    p_dateFormat = addChoiceParam("DateFormat", "Select format of datetime");
     int numDataFormats = sizeof(dFormatChoice) / sizeof(dFormatChoice[0]);
     p_dateFormat->setValue(numDataFormats, dFormatChoice, 0);
     printf("numDataFormats: %d\n", numDataFormats);
@@ -92,8 +91,7 @@ ReadCSVTime::~ReadCSVTime()
 }
 
 // param callback read header again after all changes
-void
-ReadCSVTime::param(const char *paramName, bool inMapLoading)
+void ReadCSVTime::param(const char *paramName, bool inMapLoading)
 {
 
     FileItem *fii = READER_CONTROL->getFileItem(TXT_BROWSER);
@@ -172,9 +170,8 @@ ReadCSVTime::param(const char *paramName, bool inMapLoading)
                         }
                         dataChoices.clear();
 
-                       // const char *dFormatChoice[] = {"2019-01-01T08:15:00","1/1/2019 8:15","01.01.2019 08:15:00","2019-01-01"};
-                       // p_dateFormat->setValue(sizeof(dFormatChoice)/sizeof(dFormatChoice[0]), dFormatChoice, 0);
-
+                        // const char *dFormatChoice[] = {"2019-01-01T08:15:00","1/1/2019 8:15","01.01.2019 08:15:00","2019-01-01"};
+                        // p_dateFormat->setValue(sizeof(dFormatChoice)/sizeof(dFormatChoice[0]), dFormatChoice, 0);
                     }
                 }
                 return;
@@ -253,7 +250,7 @@ int ReadCSVTime::readASCIIData()
     char *cbuf;
     int res = readHeader();
     int ii, RowCount;
-    int CurrRow ;
+    int CurrRow;
     float *tmpdat;
     std::string name_extension = "";
     if (res != STOP_PIPELINE)
@@ -266,7 +263,6 @@ int ReadCSVTime::readASCIIData()
         int col_for_time = time_col->getValue() - 1;
         float MAX_TIME_FLOAT = interval_size->getValue();
         int dFormat = p_dateFormat->getValue();
-
 
         printf("%d %d %d\n", col_for_x, col_for_y, col_for_z);
 
@@ -285,7 +281,7 @@ int ReadCSVTime::readASCIIData()
         if ((col_for_x >= 0) && (col_for_y >= 0) && (col_for_z >= 0))
         {
             std::string objNameBase = READER_CONTROL->getAssocObjName(MESHPORT3D);
-            sprintf(buf, "%s%s", objNameBase.c_str(),name_extension.c_str());
+            sprintf(buf, "%s%s", objNameBase.c_str(), name_extension.c_str());
             coDoPoints *grid = new coDoPoints(buf, numRows);
 
             grid->getAddresses(&xCoords, &yCoords, &zCoords);
@@ -298,17 +294,17 @@ int ReadCSVTime::readASCIIData()
             varInfos[n].assoc = 0;
         }
         int portID = 0;
-        
+
         for (int n = 0; n < 5; n++)
         {
             int pos = READER_CONTROL->getPortChoice(DPORT1_3D + n);
-            //printf("%d %d\n",pos,n);
+            // printf("%d %d\n",pos,n);
             if (pos > 0)
             {
                 if (varInfos[pos - 1].assoc == 0)
                 {
                     portID = DPORT1_3D + n;
-                    sprintf(buf, "%s%s", READER_CONTROL->getAssocObjName(DPORT1_3D + n).c_str(),name_extension.c_str());
+                    sprintf(buf, "%s%s", READER_CONTROL->getAssocObjName(DPORT1_3D + n).c_str(), name_extension.c_str());
                     coDoFloat *dataObj = new coDoFloat(buf, numRows);
                     varInfos[pos - 1].dataObjs[0] = dataObj;
                     varInfos[pos - 1].assoc = 1;
@@ -329,12 +325,13 @@ int ReadCSVTime::readASCIIData()
         std::vector<int> timeIntIdx;
         std::vector<int> NumOfVal;
         char time_str[50];
-        struct tm tm={};
+        struct tm tm = {};
         time_t last_t = 0;
+        float last_millisec = 0.0f; // Store last milliseconds
 
         while (fgets(buf, sizeof(buf), d_dataFile) != NULL)
         {
-     
+
             for (int i = 0; i < varInfos.size(); i++)
             {
                 tmpdat[i] = 0.;
@@ -342,7 +339,8 @@ int ReadCSVTime::readASCIIData()
 
             if ((cbuf = strtok(buf, ",;")) != NULL)
             {
-                if (col_for_time == 0) {
+                if (col_for_time == 0)
+                {
                     sscanf(cbuf, "%[^\n]s", time_str);
                 }
                 sscanf(cbuf, "%f", &tmpdat[0]);
@@ -358,124 +356,152 @@ int ReadCSVTime::readASCIIData()
                 ii = ii + 1;
                 sscanf(cbuf, "%f", &tmpdat[ii]);
 
-                if (ii == col_for_time) sscanf(cbuf, "%[^\n]s", time_str);
-
+                if (ii == col_for_time)
+                    sscanf(cbuf, "%[^\n]s", time_str);
             }
             if (has_timestamps != 0)
             {
+                float millisec = 0.0f; // Store milliseconds for this row
+
                 if (dFormat == 0)
                 {
-                    //strptime(time_str, "%Y-%m-%dT%H:%M:%S", &tm);
-                    sscanf(time_str, "%d-%d-%dT%d:%d:%d",&tm.tm_year,&tm.tm_mon,&tm.tm_mday,&tm.tm_hour,&tm.tm_min,&tm.tm_sec);
-                }else if (dFormat == 1)
+                    // strptime(time_str, "%Y-%m-%dT%H:%M:%S", &tm);
+                    sscanf(time_str, "%d-%d-%dT%d:%d:%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday, &tm.tm_hour, &tm.tm_min, &tm.tm_sec);
+                }
+                else if (dFormat == 1)
                 {
-                    //strptime(time_str, "%d/%m/%Y %H:%M", &tm);
-                    sscanf(time_str, "%d/%d/%d %d:%d",&tm.tm_mday,&tm.tm_mon,&tm.tm_year,&tm.tm_hour,&tm.tm_min);
-                }else if (dFormat == 2)
+                    // strptime(time_str, "%d/%m/%Y %H:%M", &tm);
+                    sscanf(time_str, "%d/%d/%d %d:%d", &tm.tm_mday, &tm.tm_mon, &tm.tm_year, &tm.tm_hour, &tm.tm_min);
+                }
+                else if (dFormat == 2)
                 {
-                    //strptime(time_str, "%Y.%m.%dT%H:%M", &tm);
-                    sscanf(time_str, "%d.%d.%dT%d:%d",&tm.tm_year,&tm.tm_mon,&tm.tm_mday,&tm.tm_hour,&tm.tm_min);
-                }else if (dFormat == 3)
+                    // strptime(time_str, "%Y.%m.%dT%H:%M", &tm);
+                    sscanf(time_str, "%d.%d.%dT%d:%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday, &tm.tm_hour, &tm.tm_min);
+                }
+                else if (dFormat == 3)
                 {
-                   //strptime(time_str, "%Y-%m-%d",&tm);
-                   sscanf(time_str, "%d-%d-%d",&tm.tm_year,&tm.tm_mon,&tm.tm_mday);
+                    // strptime(time_str, "%Y-%m-%d",&tm);
+                    sscanf(time_str, "%d-%d-%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday);
                 }
                 else if (dFormat == 4)
                 {
-                     char month_str[4] = "";
-                     sscanf(time_str, "%d-%3s %d:%d:%d.%f",&tm.tm_mday, month_str, &tm.tm_hour,&tm.tm_min,&tm.tm_sec,&tmpdat[0]);
-                     tm.tm_mon = monthNameToNumber(month_str);
-                     //year is not given in this format -> set to 2025
-                     tm.tm_year = 125; // 2025 - 1900
+                    char month_str[4] = "";
+                    sscanf(time_str, "%d-%3s %d:%d:%d.%f", &tm.tm_mday, month_str, &tm.tm_hour, &tm.tm_min, &tm.tm_sec, &millisec);
+                    tm.tm_mon = monthNameToNumber(month_str);
+                    // year is not given in this format -> set to 2025
+                    tm.tm_year = 125; // 2025 - 1900
                 }
                 time_t t = mktime(&tm);
-                std::cout << "TIME: " << ctime(&t) << std::endl;
-                if ((difftime(t, last_t) > (MAX_TIME_FLOAT) ) || CurrRow == 0 )
-                {
-                     timeIntIdx.push_back(CurrRow);
-                     last_t = t;
-                     timeInt++;
-                     for (int i = 0; i < varInfos.size(); i++)
-                     {
-                         if (varInfos[i].assoc == 1)
-                         {
-                             varInfos[i].x_d[CurrRow] = tmpdat[i];
-                         }
-                     }
-                     if ((col_for_x >= 0) && (col_for_y >= 0) && (col_for_z >= 0))
-                     {
-                         xCoords[CurrRow] = tmpdat[col_for_x];
-                         yCoords[CurrRow] = tmpdat[col_for_y];
-                         zCoords[CurrRow] = tmpdat[col_for_z];
-                     }
-                     id.push_back(static_cast<int>(tmpdat[col_for_id]));
-                     NumOfVal.push_back(1);
-                     CurrRow++;
 
-                }else  //check if sensor *id* occurs multiple times in interval
+                // Calculate time difference including milliseconds
+                double time_diff = difftime(t, last_t);
+                std::cout << "timediff: " << time_diff << " seconds" << std::endl;
+
+                const double EPSILON = 1e-9;
+
+                if (fabs(time_diff) < EPSILON)
                 {
-                     auto idx_f = CurrRow+10;
-                     int tmp_idx = 1;
-                     if (timeIntIdx.size() >= 1)
-                     {
-                         tmp_idx = timeIntIdx[timeIntIdx.size()-1];
-                         auto idx_ptr = std::find( id.begin() + tmp_idx, id.begin() + CurrRow, static_cast<int>(tmpdat[col_for_id]));
-                         idx_f = std::distance(id.begin() /*+ tmp_idx*/, idx_ptr);
-                     }else if (id[0] == static_cast<int>(tmpdat[col_for_id]))
-                     {
-                         idx_f = 0;
-                     }
-                     if (idx_f < CurrRow ) //else if index point to last element -> nothing was found
-                     { //double occurence of ID
-                         for (int i = 0; i < varInfos.size(); i++)
-                         {
-                             if (varInfos[i].assoc == 1)
-                             {
-                                 varInfos[i].x_d[idx_f] += tmpdat[i];
-                             }
-                         }
-                         NumOfVal[idx_f] += 1;
-                     }else { //ID does not occure in current interval -> add to interval
-                          for (int i = 0; i < varInfos.size(); i++)
-                          {
-                              if (varInfos[i].assoc == 1)
-                              {
-                                  varInfos[i].x_d[CurrRow] = tmpdat[i];
-                              }
-                          }
-                          if ((col_for_x >= 0) && (col_for_y >= 0) && (col_for_z >= 0))
-                          {
-                              xCoords[CurrRow] = tmpdat[col_for_x];
-                              yCoords[CurrRow] = tmpdat[col_for_y];
-                              zCoords[CurrRow] = tmpdat[col_for_z];
-                          }
-                          id.push_back(static_cast<int>(tmpdat[col_for_id]));
-                          NumOfVal.push_back(1);
-                          CurrRow++;
-                     }
+                    time_diff = millisec / 1000.0f - last_millisec / 1000.0f;
+                    std::cout << "last milliseconds: " << last_millisec << " seconds" << std::endl;
+                    std::cout << "current milliseconds: " << millisec << " seconds" << std::endl;
+                    std::cout << "MAX_TIME_FLOAT: " << MAX_TIME_FLOAT << " seconds" << std::endl;
+                    std::cout << "found interval: " << (time_diff > (MAX_TIME_FLOAT)) << std::endl;
                 }
-            }else {
-               for (int i = 0; i < varInfos.size(); i++)
-               {
-                   if (varInfos[i].assoc == 1)
-                   {
-                       varInfos[i].x_d[RowCount] = tmpdat[i];
-                   }
-               }
-               if ((col_for_x >= 0) && (col_for_y >= 0) && (col_for_z >= 0))
-               {
-                   xCoords[RowCount] = tmpdat[col_for_x];
-                   yCoords[RowCount] = tmpdat[col_for_y];
-                   zCoords[RowCount] = tmpdat[col_for_z];
-               }
+
+                if ((time_diff > (MAX_TIME_FLOAT)) || CurrRow == 0)
+                {
+                    timeIntIdx.push_back(CurrRow);
+                    timeInt++;
+                    for (int i = 0; i < varInfos.size(); i++)
+                    {
+                        if (varInfos[i].assoc == 1)
+                        {
+                            varInfos[i].x_d[CurrRow] = tmpdat[i];
+                        }
+                    }
+                    if ((col_for_x >= 0) && (col_for_y >= 0) && (col_for_z >= 0))
+                    {
+                        xCoords[CurrRow] = tmpdat[col_for_x];
+                        yCoords[CurrRow] = tmpdat[col_for_y];
+                        zCoords[CurrRow] = tmpdat[col_for_z];
+                    }
+                    id.push_back(static_cast<int>(tmpdat[col_for_id]));
+                    NumOfVal.push_back(1);
+                    CurrRow++;
+                }
+                else // check if sensor *id* occurs multiple times in interval
+                {
+                    auto idx_f = CurrRow + 10;
+                    int tmp_idx = 1;
+                    if (timeIntIdx.size() >= 1)
+                    {
+                        tmp_idx = timeIntIdx[timeIntIdx.size() - 1];
+                        auto idx_ptr = std::find(id.begin() + tmp_idx, id.begin() + CurrRow, static_cast<int>(tmpdat[col_for_id]));
+                        idx_f = std::distance(id.begin() /*+ tmp_idx*/, idx_ptr);
+                    }
+                    else if (id[0] == static_cast<int>(tmpdat[col_for_id]))
+                    {
+                        idx_f = 0;
+                    }
+                    if (idx_f < CurrRow) // else if index point to last element -> nothing was found
+                    { // double occurence of ID
+                        for (int i = 0; i < varInfos.size(); i++)
+                        {
+                            if (varInfos[i].assoc == 1)
+                            {
+                                varInfos[i].x_d[idx_f] += tmpdat[i];
+                            }
+                        }
+                        NumOfVal[idx_f] += 1;
+                    }
+                    else
+                    { // ID does not occure in current interval -> add to interval
+                        for (int i = 0; i < varInfos.size(); i++)
+                        {
+                            if (varInfos[i].assoc == 1)
+                            {
+                                varInfos[i].x_d[CurrRow] = tmpdat[i];
+                            }
+                        }
+                        if ((col_for_x >= 0) && (col_for_y >= 0) && (col_for_z >= 0))
+                        {
+                            xCoords[CurrRow] = tmpdat[col_for_x];
+                            yCoords[CurrRow] = tmpdat[col_for_y];
+                            zCoords[CurrRow] = tmpdat[col_for_z];
+                        }
+                        id.push_back(static_cast<int>(tmpdat[col_for_id]));
+                        NumOfVal.push_back(1);
+                        CurrRow++;
+                    }
+                }
+                
+                // Always update last_t and last_millisec for every row
+                last_t = t;
+                last_millisec = millisec;
+            }
+            else
+            {
+                for (int i = 0; i < varInfos.size(); i++)
+                {
+                    if (varInfos[i].assoc == 1)
+                    {
+                        varInfos[i].x_d[RowCount] = tmpdat[i];
+                    }
+                }
+                if ((col_for_x >= 0) && (col_for_y >= 0) && (col_for_z >= 0))
+                {
+                    xCoords[RowCount] = tmpdat[col_for_x];
+                    yCoords[RowCount] = tmpdat[col_for_y];
+                    zCoords[RowCount] = tmpdat[col_for_z];
+                }
             }
 
             RowCount = RowCount + 1;
         }
-        timeIntIdx.push_back(CurrRow-1);
+        timeIntIdx.push_back(CurrRow - 1);
         if (has_timestamps != 0)
         {
-            for(int j = 0; j < NumOfVal.size(); j++ )
+            for (int j = 0; j < NumOfVal.size(); j++)
             {
                 if (NumOfVal[j] > 1)
                 {
@@ -483,75 +509,71 @@ int ReadCSVTime::readASCIIData()
                     {
                         if (varInfos[i].assoc == 1)
                         {
-                            varInfos[i].x_d[j] = varInfos[i].x_d[j]/ NumOfVal[j];
-
+                            varInfos[i].x_d[j] = varInfos[i].x_d[j] / NumOfVal[j];
                         }
                     }
                 }
             }
-            sendInfo("Found %d time intervals",timeInt);
-            coDistributedObject **time_outdat = new coDistributedObject *[timeInt+1];
-            coDistributedObject **time_outdat_grid = new coDistributedObject *[timeInt+1];
+            sendInfo("Found %d time intervals", timeInt);
+            coDistributedObject **time_outdat = new coDistributedObject *[timeInt + 1];
+            coDistributedObject **time_outdat_grid = new coDistributedObject *[timeInt + 1];
 
             for (int n = 0; n < 5; n++)
-            {    
-                 portID = DPORT1_3D + n;
-                 int pos = READER_CONTROL->getPortChoice(DPORT1_3D + n);
-                 if (pos > 0)
-                 {
+            {
+                portID = DPORT1_3D + n;
+                int pos = READER_CONTROL->getPortChoice(DPORT1_3D + n);
+                if (pos > 0)
+                {
 
-                     int idx, idx1, numValuesInInt,t;
-                     for ( t = 0; t < (timeInt); t++)
-                     {
-                         idx = timeIntIdx[t];
-                         idx1 = timeIntIdx[t+1];
-                         numValuesInInt = idx1 - idx+1;
-                         float *val;
-                         sprintf(buf,"%s_%d",READER_CONTROL->getAssocObjName(DPORT1_3D + n).c_str(),t);
-                         coDoFloat *p = new coDoFloat(buf, numValuesInInt);
-                         p->getAddress( &val);
-                         time_outdat[t]=p;
-                         for (int j=0; j<numValuesInInt; j++)
-                         {
-                            val[j] = varInfos[pos-1].x_d[idx + j]; 
-                         }
-
-                     }
-                     time_outdat[timeInt] = NULL;
-                     coDoSet *outdata = new coDoSet(READER_CONTROL->getAssocObjName(portID).c_str(),time_outdat);
-                     varInfos[pos - 1].dataObjs[0] = outdata;
-                     sprintf(buf,"1 %d",timeInt);
-                     outdata->addAttribute("TIMESTEP",buf);
+                    int idx, idx1, numValuesInInt, t;
+                    for (t = 0; t < (timeInt); t++)
+                    {
+                        idx = timeIntIdx[t];
+                        idx1 = timeIntIdx[t + 1];
+                        numValuesInInt = idx1 - idx + 1;
+                        float *val;
+                        sprintf(buf, "%s_%d", READER_CONTROL->getAssocObjName(DPORT1_3D + n).c_str(), t);
+                        coDoFloat *p = new coDoFloat(buf, numValuesInInt);
+                        p->getAddress(&val);
+                        time_outdat[t] = p;
+                        for (int j = 0; j < numValuesInInt; j++)
+                        {
+                            val[j] = varInfos[pos - 1].x_d[idx + j];
+                        }
+                    }
+                    time_outdat[timeInt] = NULL;
+                    coDoSet *outdata = new coDoSet(READER_CONTROL->getAssocObjName(portID).c_str(), time_outdat);
+                    varInfos[pos - 1].dataObjs[0] = outdata;
+                    sprintf(buf, "1 %d", timeInt);
+                    outdata->addAttribute("TIMESTEP", buf);
                 }
             }
-            int idx, idx1, numValuesInInt,t;
+            int idx, idx1, numValuesInInt, t;
             std::string objNameBase = READER_CONTROL->getAssocObjName(MESHPORT3D);
-            for ( t = 0; t < (timeInt); t++)
+            for (t = 0; t < (timeInt); t++)
             {
-                     idx = timeIntIdx[t];
-                     idx1 = timeIntIdx[t+1];
-                     numValuesInInt = idx1 - idx+1;
-                     sprintf(buf,"%s_%d",objNameBase.c_str(),t);
-                     coDoPoints *gridInt = new coDoPoints(buf, numValuesInInt);
-                     time_outdat_grid[t]=gridInt;
-                     gridInt->getAddresses(&xValInt,&yValInt,&zValInt);
-                     for (int j=0; j<numValuesInInt; j++) 
-                     {
-                          xValInt[j] = xCoords[idx+j];
-                          yValInt[j] = yCoords[idx+j];
-                          zValInt[j] = zCoords[idx+j];
-                     }
+                idx = timeIntIdx[t];
+                idx1 = timeIntIdx[t + 1];
+                numValuesInInt = idx1 - idx + 1;
+                sprintf(buf, "%s_%d", objNameBase.c_str(), t);
+                coDoPoints *gridInt = new coDoPoints(buf, numValuesInInt);
+                time_outdat_grid[t] = gridInt;
+                gridInt->getAddresses(&xValInt, &yValInt, &zValInt);
+                for (int j = 0; j < numValuesInInt; j++)
+                {
+                    xValInt[j] = xCoords[idx + j];
+                    yValInt[j] = yCoords[idx + j];
+                    zValInt[j] = zCoords[idx + j];
+                }
             }
             time_outdat_grid[timeInt] = NULL;
-            coDoSet *outdata_grid = new coDoSet(objNameBase.c_str(),time_outdat_grid);
-            sprintf(buf,"1 %d",timeInt);
-            outdata_grid->addAttribute("TIMESTEP",buf);
+            coDoSet *outdata_grid = new coDoSet(objNameBase.c_str(), time_outdat_grid);
+            sprintf(buf, "1 %d", timeInt);
+            outdata_grid->addAttribute("TIMESTEP", buf);
 
-            delete [] time_outdat;
-            delete [] time_outdat_grid;
-            
-
-      }
+            delete[] time_outdat;
+            delete[] time_outdat_grid;
+        }
         //
         free(tmpdat);
 
@@ -561,10 +583,8 @@ int ReadCSVTime::readASCIIData()
             varInfos[n].assoc = 0;
         }
 
-
         id.clear();
         has_timestamps = 0;
-
     }
     return CONTINUE_PIPELINE;
 }
