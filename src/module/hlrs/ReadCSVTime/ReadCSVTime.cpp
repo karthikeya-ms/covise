@@ -77,13 +77,6 @@ ReadCSVTime::ReadCSVTime(int argc, char *argv[])
     p_dateFormat = addChoiceParam("DateFormat", "Select format of datetime");
     int numDataFormats = sizeof(dFormatChoice) / sizeof(dFormatChoice[0]);
     p_dateFormat->setValue(numDataFormats, dFormatChoice, 0);
-    printf("numDataFormats: %d\n", numDataFormats);
-    printf("Date format choices:\n");
-    printf("0: %s\n", dFormatChoice[0]);
-    printf("1: %s\n", dFormatChoice[1]);
-    printf("2: %s\n", dFormatChoice[2]);
-    printf("3: %s\n", dFormatChoice[3]);
-    printf("4: %s\n", dFormatChoice[4]);
 }
 
 ReadCSVTime::~ReadCSVTime()
@@ -395,17 +388,12 @@ int ReadCSVTime::readASCIIData()
 
                 // Calculate time difference including milliseconds
                 double time_diff = difftime(t, last_t);
-                std::cout << "timediff: " << time_diff << " seconds" << std::endl;
 
                 const double EPSILON = 1e-9;
 
                 if (fabs(time_diff) < EPSILON)
                 {
                     time_diff = millisec / 1000.0f - last_millisec / 1000.0f;
-                    std::cout << "last milliseconds: " << last_millisec << " seconds" << std::endl;
-                    std::cout << "current milliseconds: " << millisec << " seconds" << std::endl;
-                    std::cout << "MAX_TIME_FLOAT: " << MAX_TIME_FLOAT << " seconds" << std::endl;
-                    std::cout << "found interval: " << (time_diff > (MAX_TIME_FLOAT)) << std::endl;
                 }
 
                 if ((time_diff > (MAX_TIME_FLOAT)) || CurrRow == 0)
