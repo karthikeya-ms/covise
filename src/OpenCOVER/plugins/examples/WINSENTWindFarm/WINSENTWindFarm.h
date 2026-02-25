@@ -10,9 +10,11 @@
 
 #include <cover/coVRPlugin.h>
 
+#include <osg/Vec3d>
 #include <osg/ref_ptr>
 
 #include <string>
+#include <vector>
 
 namespace osg
 {
@@ -23,25 +25,25 @@ class Node;
 class WINSENT : public opencover::coVRPlugin
 {
 public:
-    enum class CoordinateMode
-    {
-        ZUp,
-        YUp
-    };
-
     WINSENT();
     ~WINSENT() override;
 
     bool init() override;
-    void preFrame() override;
 
 private:
-    bool loadTerrainLayer(const std::string &dataPath, CoordinateMode mode);
+    bool loadTerrainLayer(const std::string &dataPath);
+    bool loadMastLayer(const std::string &dataPath);
 
     osg::ref_ptr<osg::Node> loadTerrainModel(const std::string &terrainModelFile) const;
-    static CoordinateMode readCoordinateMode(const std::string &modeText);
+
+    static bool readCsvXYZ(const std::string &csvFile, std::vector<osg::Vec3d> &points);
+    static bool readCsvBoundsXYZ(const std::string &csvFile, osg::Vec3d &minPoint, osg::Vec3d &maxPoint);
 
     osg::ref_ptr<osg::MatrixTransform> root_;
+    osg::ref_ptr<osg::MatrixTransform> siteRoot_;
+    osg::Vec3d terrainMin_{};
+    osg::Vec3d terrainMax_{};
+    bool terrainBoundsValid_ = false;
 };
 
 #endif
