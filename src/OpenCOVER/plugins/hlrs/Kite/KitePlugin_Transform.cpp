@@ -1,0 +1,134 @@
+/* This file is part of COVISE.
+
+   You can use it under the terms of the GNU Lesser General Public License
+   version 2.1 or later, see lgpl-2.1.txt.
+
+ * License: LGPL 2+ */
+
+#include "KitePlugin.h"
+
+#include <osg/Matrix>
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+
+namespace
+{
+double quatDot(const osg::Quat &a, const osg::Quat &b)
+{
+    return (double)a.x() * b.x() + (double)a.y() * b.y() + (double)a.z() * b.z() + (double)a.w() * b.w();
+}
+}
+
+void KitePlugin::updateTransform(int frameIndex)
+{
+    if (!m_transform || m_frames.empty())
+        return;
+
+    frameIndex = std::max(0, std::min(frameIndex, (int)m_frames.size() - 1));
+    const auto &f = m_frames[frameIndex];
+
+    const double d2r = M_PI / 180.0;
+    double rollDeg = (f.roll * m_rollSign) * m_rollScale + m_rollOffsetDeg;
+    double pitchDeg = (f.pitch * m_pitchSign) * m_pitchScale + m_pitchOffsetDeg;
+    const double yawDeg = f.yaw * m_yawSign + m_yawOffsetDeg;
+
+    if (m_limitAttitude)
+    {
+        const double maxRoll = std::max(0.0, m_maxAbsRollDeg);
+        const double maxPitch = std::max(0.0, m_maxAbsPitchDeg);
+        rollDeg = std::max(-maxRoll, std::min(maxRoll, rollDeg));
+        pitchDeg = std::max(-maxPitch, std::min(maxPitch, pitchDeg));
+    }
+
+    const osg::Quat roll(rollDeg * d2r, osg::Vec3(1, 0, 0));
+    const osg::Quat pitch(pitchDeg * d2r, osg::Vec3(0, 1, 0));
+    const osg::Quat yaw(yawDeg * d2r, osg::Vec3(0, 0, 1));
+
+    osg::Quat q = yaw * pitch * roll;
+    // f.pos is in METERS (CSV units). Convert to scene units here.
+    osg::Vec3 pos = f.pos * (m_unitsPerMeter * m_worldScale * m_globalPosScale);
+
+    if (m_useNedFrame)
+    {
+        pos = osg::Vec3(pos.y(), pos.x(), -pos.z());
+        static const osg::Quat nedToEnu =
+            osg::Quat(90.0 * d2r, osg::Vec3(0, 0, 1)) *
+            osg::Quat(180.0 * d2r, osg::Vec3(1, 0, 0));
+        q = nedToEnu * q;
+    }
+
+    // CSV trajectory is ground-station relative; move whole setup in world.
+    pos += m_groundPos;
+
+    if (m_haveModelBB)
+    {
+        const float zGround = m_groundPos.z();
+        const float meshBottom = pos.z() + m_modelBB.zMin();
+        if (meshBottom < zGround - 1e-3f)
+        {
+            fprintf(stderr,
+                    "KitePlugin WARN: below ground: frame=%d posZ=%.2f meshBottom=%.2f ground=%.2f rawHeight(m)=%.3f\n",
+                    frameIndex, pos.z(), meshBottom, zGround, f.pos.z());
+        }
+    }
+
+    // Optional: clamp so the *mesh* never goes below the ground plane.
+    // Ground plane is at m_groundPos.z() (world units), but you also keep a groundXform.
+    // Here we assume your ground plane is z = m_groundPos.z().
+    if (m_clampAboveGround && m_haveModelBB)
+    {
+        const float zGround = m_groundPos.z(); // in units
+        const float minNeeded = zGround - m_modelBB.zMin(); // because zMin is negative
+        if (pos.z() < minNeeded)
+            pos.z() = minNeeded;
+    }
+
+    q = m_modelOffset * q;
+
+    const bool frameJump = (m_lastFrameIndex >= 0 && std::abs(frameIndex - m_lastFrameIndex) > 1);
+    if (!m_smoothPose || !m_haveSmoothedPose || frameJump)
+    {
+        m_smoothedPos = pos;
+        m_smoothedRot = q;
+        m_haveSmoothedPose = true;
+    }
+    else
+    {
+        const float aPos = (float)m_posSmoothAlpha;
+        const float aRot = (float)m_rotSmoothAlpha;
+
+        m_smoothedPos = m_smoothedPos * (1.0f - aPos) + pos * aPos;
+
+        osg::Quat target = q;
+        if (quatDot(m_smoothedRot, target) < 0.0)
+            target = osg::Quat(-target.x(), -target.y(), -target.z(), -target.w());
+
+        osg::Quat blended;
+        blended.slerp(aRot, m_smoothedRot, target);
+        m_smoothedRot = blended;
+    }
+    m_lastFrameIndex = frameIndex;
+
+    osg::Matrix m = osg::Matrix::rotate(m_smoothedRot) * osg::Matrix::translate(m_smoothedPos);
+    m_transform->setMatrix(m);
+}
+
+// ----------------- Rope helpers -----------------
+
+osg::Vec3 KitePlugin::localToWorld(const osg::Vec3 &pLocal) const
+{
+    return m_transform->getMatrix().preMult(pLocal);
+}
+
+osg::Quat KitePlugin::quatFromZToDir(const osg::Vec3 &dir)
+{
+    osg::Vec3 d = dir;
+    if (d.length2() < 1e-12)
+        return osg::Quat();
+    d.normalize();
+    osg::Quat q;
+    q.makeRotate(osg::Vec3(0, 0, 1), d);
+    return q;
+}
