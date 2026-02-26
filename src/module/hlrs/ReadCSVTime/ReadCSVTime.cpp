@@ -31,6 +31,8 @@
 #include <do/coDoSet.h>
 #include <do/coDoUnstructuredGrid.h>
 #include <do/coDoPoints.h>
+
+// add the following for directory reading
 #include <util/coFileUtil.h>
 
 // remove  path from filename
@@ -74,7 +76,8 @@ ReadCSVTime::ReadCSVTime(int argc, char *argv[])
     interval_size->setValue(1.0f);
     d_dataFile = NULL;
     read_dir_param = addBooleanParam("ReadDirectory", "Read all files in directory");
-    read_dir_param->setValue(1);
+    read_dir_param->setValue(0);
+    read_dir = false;
 
     const char *dFormatChoice[] = { "2019-01-01T08:15:00", "1/1/2019 8:15", "01.01.2019 08:15:00", "2019-01-01", "01-Jan 08:15:00.000" };
     p_dateFormat = addChoiceParam("DateFormat", "Select format of datetime");
@@ -119,7 +122,7 @@ void ReadCSVTime::param(const char *paramName, bool inMapLoading)
                         fclose(d_dataFile);
                     fileName = dataNm;
                     int result = STOP_PIPELINE;
-                    bool read_dir = read_dir_param->getValue();
+                    read_dir = read_dir_param->getValue();
                     if (!read_dir)
                     {
                         d_dataFile = fopen(dataNm.c_str(), "r");
@@ -138,9 +141,8 @@ void ReadCSVTime::param(const char *paramName, bool inMapLoading)
                         const char *dirName = coDirectory::dirOf(dataNm.c_str());
                         if (dirName != NULL)
                         {
-                            coDirectory *dir = coDirectory::open(coBasename(dirName));
+                            coDirectory *dir = coDirectory::open(dirName);
                             sendInfo("ReadCSVTime::param(..) opened directory: %s", dirName);
-                            // std::shared_ptr<std::istream> CSVs = m_case.getStreamForFile(CSVs, "points");
                         }
                         else
                         {
@@ -259,6 +261,28 @@ int ReadCSVTime::readHeader()
     {
         return STOP_PIPELINE;
     }
+}
+int ReadCSVTime::readDirectory(const char *dirName)
+{
+    coDirectory *dir = coDirectory::open(dirName);
+    FILE *dataFile;
+    // Implementation for reading a directory
+    for (int i = 0; i < dir->count(); i++)
+    {
+        const char *fileStr = dir->name(i);
+
+        try
+        {
+            dataFile = fopen(fileStr, "r");
+            readASCIIData();
+            fclose(dataFile);
+        }
+        catch (...)
+        {
+            cerr << "ReadCSVTime::readDirectory(..) could not read file: " << fileStr << endl;
+        }
+    }
+    return CONTINUE_PIPELINE; //TODO: return appropriate value based on success/failure of reading files
 }
 
 // taken from old ReadCSVTime module: 2-Pass reading
@@ -600,23 +624,38 @@ int ReadCSVTime::readASCIIData()
     }
     return CONTINUE_PIPELINE;
 }
+
 int ReadCSVTime::compute(const char *)
 {
-    if (d_dataFile == NULL)
+    int result = STOP_PIPELINE;
+    if (fileName.empty())
     {
-        if (fileName.empty())
+        cerr << "ReadCSVTime::param(..) no data file found " << endl;
+    }
+
+    if (d_dataFile == NULL and read_dir == 0)
+    {
+        d_dataFile = fopen(fileName.c_str(), "r");
+    }
+    else if (read_dir == 1)
+    {
+        const char *dirName = coDirectory::dirOf(fileName.c_str());
+        if (dirName != NULL)
         {
-            cerr << "ReadCSVTime::param(..) no data file found " << endl;
+            sendInfo("ReadCSVTime::compute(..) opened directory: %s", dirName);
+            result = readDirectory(dirName);
         }
         else
         {
-
-            d_dataFile = fopen(fileName.c_str(), "r");
+            cerr << "ReadCSVTime::compute(..) could not open directory: " << dirName << endl;
         }
     }
-    int result = STOP_PIPELINE;
+    else
+    {
+        cerr << "ReadCSVTime::compute(..) could not open file: " << fileName << endl;
+    }
     has_timestamps = 0;
-    if (d_dataFile != NULL)
+    if (d_dataFile != NULL and read_dir == 0)
     {
         result = readASCIIData();
         fclose(d_dataFile);

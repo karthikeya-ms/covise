@@ -61,10 +61,12 @@ private:
     coFloatParam *interval_size;
     coChoiceParam *p_dateFormat;
     coBooleanParam *read_dir_param;
+    bool read_dir;
 
     // utility functions
     int readHeader();
     int readASCIIData();
+    int readDirectory(const char *dirName);
 
     // already opened file, always rewound after use
     FILE *d_dataFile;
