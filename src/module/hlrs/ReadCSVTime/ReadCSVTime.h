@@ -60,6 +60,7 @@ private:
     coChoiceParam *x_col, *y_col, *z_col, *time_col, *ID_col;
     coFloatParam *interval_size;
     coChoiceParam *p_dateFormat;
+    coBooleanParam *read_dir_param;
 
     // utility functions
     int readHeader();
