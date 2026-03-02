@@ -60,12 +60,14 @@ private:
     coChoiceParam *x_col, *y_col, *z_col, *time_col, *ID_col;
     coFloatParam *interval_size;
     coChoiceParam *p_dateFormat;
-    coBooleanParam *read_dir_param;
-    bool read_dir;
+    bool is_dir = false;
 
     // utility functions
     int readHeader();
-    int readASCIIData();
+    int readASCIIData(const std::string &filePath);
+    bool isDirectory(const std::string &path) const;
+    std::string getFirstFileInDirectory(const std::string &dirPath);
+    std::string getNthFileFromDirectory(const std::string &dirPath, size_t n);
     int readDirectory(const char *dirName);
 
     // already opened file, always rewound after use
