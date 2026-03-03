@@ -273,6 +273,15 @@ int ReadCSVTime::readHeader()
         return STOP_PIPELINE;
     }
 }
+
+static bool isCSVFile(const std::string &filename)
+{
+    if (filename.length() < 4)
+        return false;
+    std::string ext = filename.substr(filename.length() - 4);
+    return ext == ".csv" || ext == ".CSV";
+}
+
 int ReadCSVTime::readDirectory(const char *dirName)
 {
     coDirectory *dir = coDirectory::open(dirName);
@@ -281,13 +290,8 @@ int ReadCSVTime::readDirectory(const char *dirName)
     {
         std::string fileStr = getNthFileFromDirectory(dirName, i);
 
-        // Check if file ends with .csv or .CSV
-        if (fileStr.length() < 4 || 
-            (fileStr.substr(fileStr.length() - 4) != ".csv" && 
-             fileStr.substr(fileStr.length() - 4) != ".CSV"))
-        {
-            continue;  // Skip non-CSV files
-        }
+        if (!isCSVFile(fileStr))
+            continue; // Skip non-CSV files
 
         try
         {
@@ -318,200 +322,158 @@ int ReadCSVTime::readASCIIData(const std::string &filePath)
     std::vector<float> tmpdat(varInfos.size());
     std::string name_extension = "";
 
-    int col_for_x = x_col->getValue() - 1;
-    int col_for_y = y_col->getValue() - 1;
-    int col_for_z = z_col->getValue() - 1;
-    int col_for_id = ID_col->getValue() - 1;
-    int col_for_time = time_col->getValue() - 1;
-    float MAX_TIME_FLOAT = interval_size->getValue();
-    int dFormat = p_dateFormat->getValue();
-
-    printf("%d %d %d\n", col_for_x, col_for_y, col_for_z);
-
-    if (col_for_x == -1)
-        coModule::sendWarning("No column selected for x-coordinates");
-    if (col_for_y == -1)
-        coModule::sendWarning("No column selected for y-coordinates");
-    if (col_for_z == -1)
-        coModule::sendWarning("No column selected for z-coordinates");
-
-    if (col_for_time >= 0)
+    if (varInfos.size() > 0) // Check that header was already read
     {
-        has_timestamps = 1;
-        name_extension = "_tmp";
-    }
-    if ((col_for_x >= 0) && (col_for_y >= 0) && (col_for_z >= 0))
-    {
-        std::string objNameBase = READER_CONTROL->getAssocObjName(MESHPORT3D);
-        sprintf(buf, "%s%s", objNameBase.c_str(), name_extension.c_str());
-        coDoPoints *grid = new coDoPoints(buf, numRows);
+        int col_for_x = x_col->getValue() - 1;
+        int col_for_y = y_col->getValue() - 1;
+        int col_for_z = z_col->getValue() - 1;
+        int col_for_id = ID_col->getValue() - 1;
+        int col_for_time = time_col->getValue() - 1;
+        float MAX_TIME_FLOAT = interval_size->getValue();
+        int dFormat = p_dateFormat->getValue();
 
-        grid->getAddresses(&xCoords, &yCoords, &zCoords);
-    }
+        printf("%d %d %d\n", col_for_x, col_for_y, col_for_z);
 
-    for (int n = 0; n < varInfos.size(); n++)
-    {
-        varInfos[n].dataObjs = new coDistributedObject *[1];
-        varInfos[n].dataObjs[0] = NULL;
-        varInfos[n].assoc = 0;
-    }
-    int portID = 0;
-    int number_of_ports = 5;
-    for (int n = 0; n < number_of_ports; n++)
-    {
-        int pos = READER_CONTROL->getPortChoice(DPORT1_3D + n);
-        // printf("%d %d\n",pos,n);
-        if (pos > 0)
+        if (col_for_x == -1)
+            coModule::sendWarning("No column selected for x-coordinates");
+        if (col_for_y == -1)
+            coModule::sendWarning("No column selected for y-coordinates");
+        if (col_for_z == -1)
+            coModule::sendWarning("No column selected for z-coordinates");
+
+        if (col_for_time >= 0)
         {
-            if (varInfos[pos - 1].assoc == 0)
+            has_timestamps = 1;
+            name_extension = "_tmp";
+        }
+        if ((col_for_x >= 0) && (col_for_y >= 0) && (col_for_z >= 0))
+        {
+            std::string objNameBase = READER_CONTROL->getAssocObjName(MESHPORT3D);
+            sprintf(buf, "%s%s", objNameBase.c_str(), name_extension.c_str());
+            coDoPoints *grid = new coDoPoints(buf, numRows);
+
+            grid->getAddresses(&xCoords, &yCoords, &zCoords);
+        }
+
+        for (int n = 0; n < varInfos.size(); n++)
+        {
+            varInfos[n].dataObjs = new coDistributedObject *[1];
+            varInfos[n].dataObjs[0] = NULL;
+            varInfos[n].assoc = 0;
+        }
+        int portID = 0;
+        int number_of_ports = 5;
+        for (int n = 0; n < number_of_ports; n++)
+        {
+            int pos = READER_CONTROL->getPortChoice(DPORT1_3D + n);
+            // printf("%d %d\n",pos,n);
+            if (pos > 0)
             {
-                portID = DPORT1_3D + n;
-                sprintf(buf, "%s%s", READER_CONTROL->getAssocObjName(DPORT1_3D + n).c_str(), name_extension.c_str());
-                coDoFloat *dataObj = new coDoFloat(buf, numRows);
-                varInfos[pos - 1].dataObjs[0] = dataObj;
-                varInfos[pos - 1].assoc = 1;
-                dataObj->getAddress(&varInfos[pos - 1].x_d);
+                if (varInfos[pos - 1].assoc == 0)
+                {
+                    portID = DPORT1_3D + n;
+                    sprintf(buf, "%s%s", READER_CONTROL->getAssocObjName(DPORT1_3D + n).c_str(), name_extension.c_str());
+                    coDoFloat *dataObj = new coDoFloat(buf, numRows);
+                    varInfos[pos - 1].dataObjs[0] = dataObj;
+                    varInfos[pos - 1].assoc = 1;
+                    dataObj->getAddress(&varInfos[pos - 1].x_d);
+                }
+                else
+                {
+                    sendWarning("Column %s already associated to port %d", varInfos[pos - 1].name.c_str(), n);
+                }
+            }
+        }
+        RowCount = 0;
+        CurrRow = 0;
+
+        int timeInt = 0;
+        float *xValInt, *yValInt, *zValInt;
+        std::vector<int> timeIntIdx;
+        std::vector<int> NumOfVal;
+        char time_str[50];
+        struct tm tm = {};
+        time_t last_t = 0;
+        float last_millisec = 0.0f; // Store last milliseconds
+
+        while (fgets(buf, sizeof(buf), dataFile) != NULL)
+        {
+
+            for (int i = 0; i < varInfos.size(); i++)
+            {
+                tmpdat[i] = 0.;
+            }
+
+            if ((cbuf = strtok(buf, ",;")) != NULL)
+            {
+                if (col_for_time == 0)
+                {
+                    sscanf(cbuf, "%[^\n]s", time_str);
+                }
+                sscanf(cbuf, "%f", &tmpdat[0]);
             }
             else
             {
-                sendWarning("Column %s already associated to port %d", varInfos[pos - 1].name.c_str(), n);
-            }
-        }
-    }
-    RowCount = 0;
-    CurrRow = 0;
-
-    int timeInt = 0;
-    float *xValInt, *yValInt, *zValInt;
-    std::vector<int> timeIntIdx;
-    std::vector<int> NumOfVal;
-    char time_str[50];
-    struct tm tm = {};
-    time_t last_t = 0;
-    float last_millisec = 0.0f; // Store last milliseconds
-
-    while (fgets(buf, sizeof(buf), dataFile) != NULL)
-    {
-
-        for (int i = 0; i < varInfos.size(); i++)
-        {
-            tmpdat[i] = 0.;
-        }
-
-        if ((cbuf = strtok(buf, ",;")) != NULL)
-        {
-            if (col_for_time == 0)
-            {
-                sscanf(cbuf, "%[^\n]s", time_str);
-            }
-            sscanf(cbuf, "%f", &tmpdat[0]);
-        }
-        else
-        {
-            coModule::sendWarning("Error parsing line %d", RowCount + 1);
-        }
-
-        ii = 0;
-        while ((cbuf = strtok(NULL, ";,")) != NULL)
-        {
-            ii = ii + 1;
-            sscanf(cbuf, "%f", &tmpdat[ii]);
-
-            if (ii == col_for_time)
-                sscanf(cbuf, "%[^\n]s", time_str);
-        }
-        if (has_timestamps != 0)
-        {
-            float millisec = 0.0f; // Store milliseconds for this row
-
-            if (dFormat == 0)
-            {
-                // strptime(time_str, "%Y-%m-%dT%H:%M:%S", &tm);
-                sscanf(time_str, "%d-%d-%dT%d:%d:%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday, &tm.tm_hour, &tm.tm_min, &tm.tm_sec);
-            }
-            else if (dFormat == 1)
-            {
-                // strptime(time_str, "%d/%m/%Y %H:%M", &tm);
-                sscanf(time_str, "%d/%d/%d %d:%d", &tm.tm_mday, &tm.tm_mon, &tm.tm_year, &tm.tm_hour, &tm.tm_min);
-            }
-            else if (dFormat == 2)
-            {
-                // strptime(time_str, "%Y.%m.%dT%H:%M", &tm);
-                sscanf(time_str, "%d.%d.%dT%d:%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday, &tm.tm_hour, &tm.tm_min);
-            }
-            else if (dFormat == 3)
-            {
-                // strptime(time_str, "%Y-%m-%d",&tm);
-                sscanf(time_str, "%d-%d-%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday);
-            }
-            else if (dFormat == 4)
-            {
-                char month_str[4] = "";
-                sscanf(time_str, "%d-%3s %d:%d:%d.%f", &tm.tm_mday, month_str, &tm.tm_hour, &tm.tm_min, &tm.tm_sec, &millisec);
-                tm.tm_mon = monthNameToNumber(month_str);
-                // year is not given in this format -> set to 2025
-                tm.tm_year = 125; // 2025 - 1900
-            }
-            time_t t = mktime(&tm);
-
-            // Calculate time difference including milliseconds
-            double time_diff = difftime(t, last_t);
-
-            const double EPSILON = 1e-9;
-
-            if (fabs(time_diff) < EPSILON)
-            {
-                time_diff = millisec / 1000.0f - last_millisec / 1000.0f;
+                coModule::sendWarning("Error parsing line %d", RowCount + 1);
             }
 
-            if ((time_diff > (MAX_TIME_FLOAT)) || CurrRow == 0)
+            ii = 0;
+            while ((cbuf = strtok(NULL, ";,")) != NULL)
             {
-                timeIntIdx.push_back(CurrRow);
-                timeInt++;
-                for (int i = 0; i < varInfos.size(); i++)
+                ii = ii + 1;
+                sscanf(cbuf, "%f", &tmpdat[ii]);
+
+                if (ii == col_for_time)
+                    sscanf(cbuf, "%[^\n]s", time_str);
+            }
+            if (has_timestamps != 0)
+            {
+                float millisec = 0.0f; // Store milliseconds for this row
+
+                if (dFormat == 0)
                 {
-                    if (varInfos[i].assoc == 1)
-                    {
-                        varInfos[i].x_d[CurrRow] = tmpdat[i];
-                    }
+                    // strptime(time_str, "%Y-%m-%dT%H:%M:%S", &tm);
+                    sscanf(time_str, "%d-%d-%dT%d:%d:%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday, &tm.tm_hour, &tm.tm_min, &tm.tm_sec);
                 }
-                if ((col_for_x >= 0) && (col_for_y >= 0) && (col_for_z >= 0))
+                else if (dFormat == 1)
                 {
-                    xCoords[CurrRow] = tmpdat[col_for_x];
-                    yCoords[CurrRow] = tmpdat[col_for_y];
-                    zCoords[CurrRow] = tmpdat[col_for_z];
+                    // strptime(time_str, "%d/%m/%Y %H:%M", &tm);
+                    sscanf(time_str, "%d/%d/%d %d:%d", &tm.tm_mday, &tm.tm_mon, &tm.tm_year, &tm.tm_hour, &tm.tm_min);
                 }
-                id.push_back(static_cast<int>(tmpdat[col_for_id]));
-                NumOfVal.push_back(1);
-                CurrRow++;
-            }
-            else // check if sensor *id* occurs multiple times in interval
-            {
-                auto idx_f = CurrRow + 10;
-                int tmp_idx = 1;
-                if (timeIntIdx.size() >= 1)
+                else if (dFormat == 2)
                 {
-                    tmp_idx = timeIntIdx[timeIntIdx.size() - 1];
-                    auto idx_ptr = std::find(id.begin() + tmp_idx, id.begin() + CurrRow, static_cast<int>(tmpdat[col_for_id]));
-                    idx_f = std::distance(id.begin() /*+ tmp_idx*/, idx_ptr);
+                    // strptime(time_str, "%Y.%m.%dT%H:%M", &tm);
+                    sscanf(time_str, "%d.%d.%dT%d:%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday, &tm.tm_hour, &tm.tm_min);
                 }
-                else if (id[0] == static_cast<int>(tmpdat[col_for_id]))
+                else if (dFormat == 3)
                 {
-                    idx_f = 0;
+                    // strptime(time_str, "%Y-%m-%d",&tm);
+                    sscanf(time_str, "%d-%d-%d", &tm.tm_year, &tm.tm_mon, &tm.tm_mday);
                 }
-                if (idx_f < CurrRow) // else if index point to last element -> nothing was found
-                { // double occurence of ID
-                    for (int i = 0; i < varInfos.size(); i++)
-                    {
-                        if (varInfos[i].assoc == 1)
-                        {
-                            varInfos[i].x_d[idx_f] += tmpdat[i];
-                        }
-                    }
-                    NumOfVal[idx_f] += 1;
+                else if (dFormat == 4)
+                {
+                    char month_str[4] = "";
+                    sscanf(time_str, "%d-%3s %d:%d:%d.%f", &tm.tm_mday, month_str, &tm.tm_hour, &tm.tm_min, &tm.tm_sec, &millisec);
+                    tm.tm_mon = monthNameToNumber(month_str);
+                    // year is not given in this format -> set to 2025
+                    tm.tm_year = 125; // 2025 - 1900
                 }
-                else
-                { // ID does not occure in current interval -> add to interval
+                time_t t = mktime(&tm);
+
+                // Calculate time difference including milliseconds
+                double time_diff = difftime(t, last_t);
+
+                const double EPSILON = 1e-9;
+
+                if (fabs(time_diff) < EPSILON)
+                {
+                    time_diff = millisec / 1000.0f - last_millisec / 1000.0f;
+                }
+
+                if ((time_diff > (MAX_TIME_FLOAT)) || CurrRow == 0)
+                {
+                    timeIntIdx.push_back(CurrRow);
+                    timeInt++;
                     for (int i = 0; i < varInfos.size(); i++)
                     {
                         if (varInfos[i].assoc == 1)
@@ -529,122 +491,167 @@ int ReadCSVTime::readASCIIData(const std::string &filePath)
                     NumOfVal.push_back(1);
                     CurrRow++;
                 }
-            }
-
-            // Always update last_t and last_millisec for every row
-            last_t = t;
-            last_millisec = millisec;
-        }
-        else
-        {
-            for (int i = 0; i < varInfos.size(); i++)
-            {
-                if (varInfos[i].assoc == 1)
+                else // check if sensor *id* occurs multiple times in interval
                 {
-                    varInfos[i].x_d[RowCount] = tmpdat[i];
+                    auto idx_f = CurrRow + 10;
+                    int tmp_idx = 1;
+                    if (timeIntIdx.size() >= 1)
+                    {
+                        tmp_idx = timeIntIdx[timeIntIdx.size() - 1];
+                        auto idx_ptr = std::find(id.begin() + tmp_idx, id.begin() + CurrRow, static_cast<int>(tmpdat[col_for_id]));
+                        idx_f = std::distance(id.begin() /*+ tmp_idx*/, idx_ptr);
+                    }
+                    else if (id[0] == static_cast<int>(tmpdat[col_for_id]))
+                    {
+                        idx_f = 0;
+                    }
+                    if (idx_f < CurrRow) // else if index point to last element -> nothing was found
+                    { // double occurence of ID
+                        for (int i = 0; i < varInfos.size(); i++)
+                        {
+                            if (varInfos[i].assoc == 1)
+                            {
+                                varInfos[i].x_d[idx_f] += tmpdat[i];
+                            }
+                        }
+                        NumOfVal[idx_f] += 1;
+                    }
+                    else
+                    { // ID does not occure in current interval -> add to interval
+                        for (int i = 0; i < varInfos.size(); i++)
+                        {
+                            if (varInfos[i].assoc == 1)
+                            {
+                                varInfos[i].x_d[CurrRow] = tmpdat[i];
+                            }
+                        }
+                        if ((col_for_x >= 0) && (col_for_y >= 0) && (col_for_z >= 0))
+                        {
+                            xCoords[CurrRow] = tmpdat[col_for_x];
+                            yCoords[CurrRow] = tmpdat[col_for_y];
+                            zCoords[CurrRow] = tmpdat[col_for_z];
+                        }
+                        id.push_back(static_cast<int>(tmpdat[col_for_id]));
+                        NumOfVal.push_back(1);
+                        CurrRow++;
+                    }
                 }
-            }
-            if ((col_for_x >= 0) && (col_for_y >= 0) && (col_for_z >= 0))
-            {
-                xCoords[RowCount] = tmpdat[col_for_x];
-                yCoords[RowCount] = tmpdat[col_for_y];
-                zCoords[RowCount] = tmpdat[col_for_z];
-            }
-        }
 
-        RowCount = RowCount + 1;
-    }
-    timeIntIdx.push_back(CurrRow - 1);
-    if (has_timestamps != 0)
-    {
-        for (int j = 0; j < NumOfVal.size(); j++)
-        {
-            if (NumOfVal[j] > 1)
+                // Always update last_t and last_millisec for every row
+                last_t = t;
+                last_millisec = millisec;
+            }
+            else
             {
                 for (int i = 0; i < varInfos.size(); i++)
                 {
                     if (varInfos[i].assoc == 1)
                     {
-                        varInfos[i].x_d[j] = varInfos[i].x_d[j] / NumOfVal[j];
+                        varInfos[i].x_d[RowCount] = tmpdat[i];
                     }
                 }
-            }
-        }
-        sendInfo("Found %d time intervals", timeInt);
-        coDistributedObject **time_outdat = new coDistributedObject *[timeInt + 1];
-        coDistributedObject **time_outdat_grid = new coDistributedObject *[timeInt + 1];
-
-        for (int n = 0; n < 5; n++)
-        {
-            portID = DPORT1_3D + n;
-            int pos = READER_CONTROL->getPortChoice(DPORT1_3D + n);
-            if (pos > 0)
-            {
-
-                int idx, idx1, numValuesInInt, t;
-                for (t = 0; t < (timeInt); t++)
+                if ((col_for_x >= 0) && (col_for_y >= 0) && (col_for_z >= 0))
                 {
-                    idx = timeIntIdx[t];
-                    idx1 = timeIntIdx[t + 1];
-                    numValuesInInt = idx1 - idx + 1;
-                    float *val;
-                    sprintf(buf, "%s_%d", READER_CONTROL->getAssocObjName(DPORT1_3D + n).c_str(), t);
-                    coDoFloat *p = new coDoFloat(buf, numValuesInInt);
-                    p->getAddress(&val);
-                    time_outdat[t] = p;
-                    for (int j = 0; j < numValuesInInt; j++)
+                    xCoords[RowCount] = tmpdat[col_for_x];
+                    yCoords[RowCount] = tmpdat[col_for_y];
+                    zCoords[RowCount] = tmpdat[col_for_z];
+                }
+            }
+
+            RowCount = RowCount + 1;
+        }
+
+        timeIntIdx.push_back(CurrRow - 1);
+        if (has_timestamps != 0)
+        {
+            for (int j = 0; j < NumOfVal.size(); j++)
+            {
+                if (NumOfVal[j] > 1)
+                {
+                    for (int i = 0; i < varInfos.size(); i++)
                     {
-                        val[j] = varInfos[pos - 1].x_d[idx + j];
+                        if (varInfos[i].assoc == 1)
+                        {
+                            varInfos[i].x_d[j] = varInfos[i].x_d[j] / NumOfVal[j];
+                        }
                     }
                 }
-                time_outdat[timeInt] = NULL;
-                coDoSet *outdata = new coDoSet(READER_CONTROL->getAssocObjName(portID).c_str(), time_outdat);
-                varInfos[pos - 1].dataObjs[0] = outdata;
-                sprintf(buf, "1 %d", timeInt);
-                outdata->addAttribute("TIMESTEP", buf);
             }
-        }
-        int idx, idx1, numValuesInInt, t;
-        std::string objNameBase = READER_CONTROL->getAssocObjName(MESHPORT3D);
-        for (t = 0; t < (timeInt); t++)
-        {
-            idx = timeIntIdx[t];
-            idx1 = timeIntIdx[t + 1];
-            numValuesInInt = idx1 - idx + 1;
-            sprintf(buf, "%s_%d", objNameBase.c_str(), t);
-            coDoPoints *gridInt = new coDoPoints(buf, numValuesInInt);
-            time_outdat_grid[t] = gridInt;
-            gridInt->getAddresses(&xValInt, &yValInt, &zValInt);
-            for (int j = 0; j < numValuesInInt; j++)
+            sendInfo("Found %d time intervals", timeInt);
+
+            // Use vector instead of raw pointer array
+            std::vector<coDistributedObject *> time_outdat(timeInt + 1, nullptr);
+            std::vector<coDistributedObject *> time_outdat_grid(timeInt + 1, nullptr);
+
+            for (int n = 0; n < 5; n++)
             {
-                xValInt[j] = xCoords[idx + j];
-                yValInt[j] = yCoords[idx + j];
-                zValInt[j] = zCoords[idx + j];
+                portID = DPORT1_3D + n;
+                int pos = READER_CONTROL->getPortChoice(DPORT1_3D + n);
+                if (pos > 0)
+                {
+
+                    int idx, idx1, numValuesInInt, t;
+                    for (t = 0; t < (timeInt); t++)
+                    {
+                        idx = timeIntIdx[t];
+                        idx1 = timeIntIdx[t + 1];
+                        numValuesInInt = idx1 - idx + 1;
+                        float *val;
+                        sprintf(buf, "%s_%d", READER_CONTROL->getAssocObjName(DPORT1_3D + n).c_str(), t);
+                        coDoFloat *p = new coDoFloat(buf, numValuesInInt);
+                        p->getAddress(&val);
+                        time_outdat[t] = p;
+                        for (int j = 0; j < numValuesInInt; j++)
+                        {
+                            val[j] = varInfos[pos - 1].x_d[idx + j];
+                        }
+                    }
+                    time_outdat[timeInt] = NULL;
+                    coDoSet *outdata = new coDoSet(READER_CONTROL->getAssocObjName(portID).c_str(), time_outdat.data());
+                    varInfos[pos - 1].dataObjs[0] = outdata;
+                    sprintf(buf, "1 %d", timeInt);
+                    outdata->addAttribute("TIMESTEP", buf);
+                }
             }
+            int idx, idx1, numValuesInInt, t;
+            std::string objNameBase = READER_CONTROL->getAssocObjName(MESHPORT3D);
+            for (t = 0; t < (timeInt); t++)
+            {
+                idx = timeIntIdx[t];
+                idx1 = timeIntIdx[t + 1];
+                numValuesInInt = idx1 - idx + 1;
+                sprintf(buf, "%s_%d", objNameBase.c_str(), t);
+                coDoPoints *gridInt = new coDoPoints(buf, numValuesInInt);
+                time_outdat_grid[t] = gridInt;
+                gridInt->getAddresses(&xValInt, &yValInt, &zValInt);
+                for (int j = 0; j < numValuesInInt; j++)
+                {
+                    xValInt[j] = xCoords[idx + j];
+                    yValInt[j] = yCoords[idx + j];
+                    zValInt[j] = zCoords[idx + j];
+                }
+            }
+            time_outdat_grid[timeInt] = NULL;
+            coDoSet *outdata_grid = new coDoSet(objNameBase.c_str(), time_outdat_grid.data());
+            sprintf(buf, "1 %d", timeInt);
+            outdata_grid->addAttribute("TIMESTEP", buf);
         }
-        time_outdat_grid[timeInt] = NULL;
-        coDoSet *outdata_grid = new coDoSet(objNameBase.c_str(), time_outdat_grid);
-        sprintf(buf, "1 %d", timeInt);
-        outdata_grid->addAttribute("TIMESTEP", buf);
 
-        delete[] time_outdat;
-        delete[] time_outdat_grid;
+        for (int n = 0; n < varInfos.size(); n++)
+        {
+            delete[] varInfos[n].dataObjs;
+            varInfos[n].assoc = 0;
+        }
+
+        id.clear();
+        has_timestamps = 0;
+
+        fclose(dataFile); // Close at the end
+        return CONTINUE_PIPELINE;
     }
-
-    for (int n = 0; n < varInfos.size(); n++)
-    {
-        delete[] varInfos[n].dataObjs;
-        varInfos[n].assoc = 0;
-    }
-
-    id.clear();
-    has_timestamps = 0;
-
-    fclose(dataFile); // Close at the end
-    return CONTINUE_PIPELINE;
 }
 
-int ReadCSVTime::compute(const char *)
+int ReadCSVTime::compute(const char *port)
 {
     int result = STOP_PIPELINE;
     has_timestamps = 0;
