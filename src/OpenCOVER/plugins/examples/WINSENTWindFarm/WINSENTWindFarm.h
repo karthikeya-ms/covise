@@ -44,6 +44,7 @@ private:
     osg::Vec3d terrainMin_{};
     osg::Vec3d terrainMax_{};
     bool terrainBoundsValid_ = false;
+    bool terrainIsYUp_ = false;
 };
 
 #endif
