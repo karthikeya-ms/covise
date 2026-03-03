@@ -288,7 +288,7 @@ int ReadCSVTime::readDirectory(const char *dirName)
 
     for (int i = 0; i < dir->count(); i++)
     {
-        std::string fileStr = dir->name(i);
+        std::string fileStr = std::string(dirName) + dir->name(i);
 
         if (!isCSVFile(fileStr))
             continue; // Skip non-CSV files
