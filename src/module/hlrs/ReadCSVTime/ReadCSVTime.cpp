@@ -133,7 +133,7 @@ void ReadCSVTime::param(const char *paramName, bool inMapLoading)
                             sendInfo("ReadCSVTime::param(..) opened directory: %s", dirName);
                             sendInfo("ReadCSVTime::param(..) found %d files in directory", dir->count());
 
-                            std::string first_file = getNthFileFromDirectory(dataNm, 0);
+                            std::string first_file = getFirstFileInDirectory(dataNm);
                             sendInfo("ReadCSVTime::param(..) read header information from first file called %s", first_file.c_str());
 
                             if (!first_file.empty())
@@ -288,7 +288,7 @@ int ReadCSVTime::readDirectory(const char *dirName)
 
     for (int i = 0; i < dir->count(); i++)
     {
-        std::string fileStr = getNthFileFromDirectory(dirName, i);
+        std::string fileStr = dir->name(i);
 
         if (!isCSVFile(fileStr))
             continue; // Skip non-CSV files
@@ -708,39 +708,6 @@ std::string ReadCSVTime::getFirstFileInDirectory(const std::string &dirPath)
             return fullPath;
     }
     return {};
-}
-
-std::string ReadCSVTime::getNthFileFromDirectory(const std::string &dirPath, size_t n)
-{
-    coDirectory *dir = coDirectory::open(dirPath.c_str());
-    if (!dir)
-        return {};
-
-    std::vector<std::string> files;
-    files.reserve(dir->count());
-
-    for (int i = 0; i < dir->count(); ++i)
-    {
-        const char *name = dir->name(i);
-        if (!name || std::strcmp(name, ".") == 0 || std::strcmp(name, "..") == 0)
-            continue;
-
-        std::string fullPath = dirPath;
-        if (!fullPath.empty() && fullPath.back() != '/')
-            fullPath += '/';
-        fullPath += name;
-
-        struct stat st {};
-        if (stat(fullPath.c_str(), &st) == 0 && S_ISREG(st.st_mode))
-            files.push_back(fullPath);
-    }
-
-    std::sort(files.begin(), files.end()); // deterministic order
-
-    if (n >= files.size())
-        return {};
-
-    return files[n]; // n is 0-based
 }
 
 int main(int argc, char *argv[])
