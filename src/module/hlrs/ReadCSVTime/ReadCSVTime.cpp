@@ -107,7 +107,7 @@ void ReadCSVTime::param(const char *paramName, bool inMapLoading)
                     if (d_dataFile != NULL)
                         fclose(d_dataFile);
                     fileName = dataNm;
-                    std::cout << "ReadCSVTime::param(..) selected file: " << fileName << std::endl;
+                    std::cout << "ReadCSVTime::param(..) selected file or folder: " << fileName << std::endl;
                     int result = STOP_PIPELINE;
                     is_dir = isDirectory(dataNm);
                     std::cout << "Read directory: " << is_dir << std::endl;
@@ -276,14 +276,43 @@ int ReadCSVTime::readHeader()
 
 static bool isCSVFile(const std::string &filename)
 {
-    if (filename.length() < 4)
+    if (filename.size() < 4)
         return false;
-    std::string ext = filename.substr(filename.length() - 4);
-    return ext == ".csv" || ext == ".CSV";
+
+    const std::string ext = filename.substr(filename.size() - 4);
+    if (ext != ".csv" && ext != ".CSV")
+        return false;
+
+    // basename
+    const auto slash = filename.find_last_of('/');
+    const std::string name = (slash == std::string::npos) ? filename : filename.substr(slash + 1);
+
+    // ignore hidden / lock / backup files
+    if (name.empty())
+        return false;
+    if (name[0] == '.')                 // .*, including .~lock...
+        return false;
+
+    return true;
 }
 
 int ReadCSVTime::readDirectory(const char *dirName)
 {
+    // Reset global state at start of directory read
+    global_timeIntIdx.clear();
+    global_timeIntIdx.push_back(0);
+    global_NumOfVal.clear();
+    global_last_t = 0;
+    global_last_millisec = 0.0f;
+
+    // Accumulate data across all files
+    std::vector<float> allXData;
+    std::vector<float> allYData;
+    std::vector<float> allZData;
+    allXData.reserve(numRows * 2);  // Reserve extra space
+    allYData.reserve(numRows * 2);
+    allZData.reserve(numRows * 2);
+
     coDirectory *dir = coDirectory::open(dirName);
 
     for (int i = 0; i < dir->count(); i++)
@@ -291,22 +320,177 @@ int ReadCSVTime::readDirectory(const char *dirName)
         std::string fileStr = std::string(dirName) + dir->name(i);
 
         if (!isCSVFile(fileStr))
-            continue; // Skip non-CSV files
+            continue;
 
         try
         {
             std::cout << "Reading file in readDirectory: " << fileStr << std::endl;
-            readASCIIData(fileStr);
+            // Pass vectors by reference so data accumulates
+            ReadASCIIDataInDirectory(fileStr, allXData, allYData, allZData);
         }
         catch (...)
         {
             cerr << "ReadCSVTime::readDirectory(..) could not read file: " << fileStr << endl;
         }
     }
+
+    // Call addDataToGridPort ONCE after all files are read
+    addDataToGridPort(allXData, allYData, allZData);
+
     return CONTINUE_PIPELINE;
 }
 
-// taken from old ReadCSVTime module: 2-Pass reading
+int ReadCSVTime::addDataToGridPort(const std::vector<float> &xData,
+                                   const std::vector<float> &yData,
+                                   const std::vector<float> &zData)
+{
+    const size_t n = std::min({xData.size(), yData.size(), zData.size()});
+    if (n == 0)
+        return STOP_PIPELINE;
+
+    std::string name_extension;
+    if (time_col->getValue() - 1 >= 0)
+        name_extension = "_tmp";
+
+    std::string objNameBase = READER_CONTROL->getAssocObjName(MESHPORT3D);
+    sprintf(buf, "%s%s", objNameBase.c_str(), name_extension.c_str());
+
+    coDoPoints *grid = new coDoPoints(buf, static_cast<int>(n));
+
+    grid->getAddresses(&xPtr, &yPtr, &zPtr);
+
+    std::copy_n(xData.data(), n, xPtr);
+    std::copy_n(yData.data(), n, yPtr);
+    std::copy_n(zData.data(), n, zPtr);
+
+    return CONTINUE_PIPELINE;
+}
+
+bool ReadCSVTime::isBiggerThanTimeInterval(char time_str[50])
+{
+    // Convert time_str to time_t and milliseconds
+    struct tm tm;
+    float millisec = 0.0f;
+    float interval_size_sec = interval_size->getValue();
+
+    int dFormat = p_dateFormat->getValue();
+    switch (dFormat)
+    {
+    case 0: // "2019-01-01T08:15:00"
+        strptime(time_str, "%Y-%m-%dT%H:%M:%S", &tm);
+        break;
+    case 1: // "1/1/2019 8:15"
+        strptime(time_str, "%m/%d/%Y %H:%M", &tm);
+        break;
+    case 2: // "01.01.2019 08:15:00"
+        strptime(time_str, "%d.%m.%Y %H:%M:%S", &tm);
+        break;
+    case 3: // "2019-01-01"
+        strptime(time_str, "%Y-%m-%d", &tm);
+        break;
+    case 4: // "01-Jan 08:15:00.000"
+        char month_str[4];
+        sscanf(time_str, "%2s %*d %*d:%*d:%*f", month_str);
+        tm.tm_mon = monthNameToNumber(month_str);
+        strptime(time_str, "%d-%b %H:%M:%S.%f", &tm);
+        break;
+    default:
+        return true; // If format is unknown, treat as if interval has passed
+    }
+
+    time_t t = mktime(&tm);
+
+    // Calculate difference in seconds
+    double diff_sec = difftime(t, global_last_t) + (millisec - global_last_millisec) / 1000.0;
+
+    bool res = diff_sec >= interval_size_sec;
+
+    if (res)
+    {
+        global_last_t = t;
+        global_last_millisec = millisec;
+    }
+
+    return res;
+}
+
+int ReadCSVTime::ReadASCIIDataInDirectory(const std::string &filePath,
+                                          std::vector<float> &allXData,
+                                          std::vector<float> &allYData,
+                                          std::vector<float> &allZData)
+{
+    FILE *dataFile = fopen(filePath.c_str(), "r");
+    if (!dataFile)
+    {
+        cerr << "ReadCSVTime::readASCIIDataInDirectory(..) could not open file: " << filePath << endl;
+        return STOP_PIPELINE;
+    }
+
+    // Initialize user given values:
+    int col_for_x = x_col->getValue() - 1;
+    int col_for_y = y_col->getValue() - 1;
+    int col_for_z = z_col->getValue() - 1;
+    int col_for_id = ID_col->getValue() - 1;
+    int col_for_time = time_col->getValue() - 1;
+    float MAX_TIME_FLOAT = interval_size->getValue();
+    int dFormat = p_dateFormat->getValue();
+
+    if (col_for_x == -1)
+        coModule::sendWarning("No column selected for x-coordinates");
+    if (col_for_y == -1)
+        coModule::sendWarning("No column selected for y-coordinates");
+    if (col_for_z == -1)
+        coModule::sendWarning("No column selected for z-coordinates");
+    if (col_for_id == -1)
+        coModule::sendWarning("No column selected for ID");
+    if (col_for_time == -1)
+        coModule::sendWarning("No column selected for time");
+
+    // Skip header
+    char skipBuf[1024];
+    fgets(skipBuf, sizeof(skipBuf), dataFile);
+
+    char buffer[5000];
+    char *columnbuf;
+    char time_str[50];
+    
+    int row = 0;
+    
+    while (fgets(buffer, sizeof(buffer), dataFile) != NULL) // goes through each line in file (row wise)
+    {
+        std::vector<float> tmpdat(varInfos.size(), 0.0f);
+        int col = 0;
+        char time_str[50];
+        bool takeRow = false;
+
+        // Process all columns in one loop
+        columnbuf = strtok(buffer, ";,");
+        while (columnbuf != NULL) // goes through each column
+        {
+            sscanf(columnbuf, "%f", &tmpdat[col]);
+            if (col == col_for_time)
+                sscanf(columnbuf, "%[^\n]s", time_str);
+            
+            col++;
+            columnbuf = strtok(NULL, ";,");
+        }
+        
+        takeRow = isBiggerThanTimeInterval(time_str);
+        if (takeRow || row == 0)
+        {
+            // Accumulate into global vectors instead of local ones
+            allXData.push_back(tmpdat[col_for_x]);
+            allYData.push_back(tmpdat[col_for_y]);
+            allZData.push_back(tmpdat[col_for_z]);
+            row++;
+        }
+    }
+
+    fclose(dataFile);
+    return CONTINUE_PIPELINE;
+}
+
+// add ReadASCII method for reading just one file to avoid different behavior while changing reading files from directory
 int ReadCSVTime::readASCIIData(const std::string &filePath)
 {
     FILE *dataFile = fopen(filePath.c_str(), "r");
@@ -704,7 +888,7 @@ std::string ReadCSVTime::getFirstFileInDirectory(const std::string &dirPath)
         fullPath += name;
 
         struct stat st {};
-        if (stat(fullPath.c_str(), &st) == 0 && S_ISREG(st.st_mode))
+        if (stat(fullPath.c_str(), &st) == 0 && S_ISREG(st.st_mode) && isCSVFile(fullPath))
             return fullPath;
     }
     return {};

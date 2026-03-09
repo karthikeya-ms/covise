@@ -70,6 +70,18 @@ private:
     std::string getNthFileFromDirectory(const std::string &dirPath, size_t n);
     int readDirectory(const char *dirName);
 
+    //this function can be combined with readAsCIIData, but for better readability and to avoid different behavior while changing reading files from directory, it is separated
+    int ReadASCIIDataInDirectory(const std::string &filePath,
+                                          std::vector<float> &allXData,
+                                          std::vector<float> &allYData,
+                                          std::vector<float> &allZData);
+    bool isBiggerThanTimeInterval(char time_str[50]);
+
+    float *xPtr = nullptr;
+    float *yPtr = nullptr;
+    float *zPtr = nullptr;
+    int addDataToGridPort(const std::vector<float> &xData, const std::vector<float> &yData, const std::vector<float> &zData);
+
     // already opened file, always rewound after use
     FILE *d_dataFile;
     std::string fileName;
@@ -90,6 +102,13 @@ private:
 
     std::vector<float> id;
     int has_timestamps;
+
+    std::vector<int> global_timeIntIdx;
+    std::vector<int> global_timeInt;
+    std::vector<int> global_NumOfVal;
+    time_t global_last_t = 0;
+    float global_last_millisec = 0.0f;
+
 public:
     ReadCSVTime(int argc, char *argv[]);
     virtual ~ReadCSVTime();
