@@ -311,10 +311,13 @@ int ReadCSVTime::readDirectory(const char *dirName)
     std::vector<float> allXData;
     std::vector<float> allYData;
     std::vector<float> allZData;
+    std::vector<std::vector<float>> allData;
     allXData.reserve(numRows * dir->count()); // Reserve extra space
     allYData.reserve(numRows * dir->count());
     allZData.reserve(numRows * dir->count());
+    allData.reserve(numRows);
 
+    int filenumber = 0;
     for (int i = 0; i < dir->count(); i++)
     {
         std::string fileStr = std::string(dirName) + dir->name(i);
@@ -326,7 +329,8 @@ int ReadCSVTime::readDirectory(const char *dirName)
         {
             std::cout << "Reading file in readDirectory: " << fileStr << std::endl;
             // Pass vectors by reference so data accumulates
-            ReadASCIIDataInDirectory(fileStr, allXData, allYData, allZData);
+            ReadASCIIDataInDirectory(fileStr, allXData, allYData, allZData, allData, filenumber);
+            filenumber++;
         }
         catch (...)
         {
@@ -335,6 +339,8 @@ int ReadCSVTime::readDirectory(const char *dirName)
     }
 
     addDataToGridPort(allXData, allYData, allZData);
+    // TODO: iterate over ports and add data
+    addDataToDataPort(allData, DPORT1_3D);
 
     return CONTINUE_PIPELINE;
 }
@@ -362,7 +368,40 @@ int ReadCSVTime::addDataToGridPort(std::vector<float> &xData,
     std::copy_n(yData.data(), n, yPtr);
     std::copy_n(zData.data(), n, zPtr);
 
-    //grid->addAttribute("TIMESTEP", buf);
+    // grid->addAttribute("TIMESTEP", buf);
+
+    return CONTINUE_PIPELINE;
+}
+
+int ReadCSVTime::addDataToDataPort(std::vector<std::vector<float>> &data, int portNum)
+{
+    const size_t n = data.size();
+    if (n == 0)
+        return STOP_PIPELINE;
+
+    std::string name_extension;
+    if (time_col->getValue() - 1 >= 0)
+        name_extension = "_tmp";
+
+    std::vector<coDistributedObject *> elems(data.size() + 1, nullptr); // last must be null
+
+    for (size_t i = 0; i < data.size(); ++i)
+    {
+        char name[50];
+        std::string objNameBase = READER_CONTROL->getAssocObjName(portNum);
+        sprintf(buf, "%s%s", objNameBase.c_str(), name_extension.c_str());
+
+        coDoFloat *obj = new coDoFloat(buf, static_cast<int>(data[i].size()));
+        float *ptr = nullptr;
+        obj->getAddress(&ptr);
+        std::copy(data[i].begin(), data[i].end(), ptr);
+
+        elems[i] = obj;
+    }
+
+    coDoSet *setObj = new coDoSet(READER_CONTROL->getAssocObjName(DPORT1_3D).c_str(), elems.data());
+    // optional for timesteps:
+    setObj->addAttribute("TIMESTEP", buf);
 
     return CONTINUE_PIPELINE;
 }
@@ -418,7 +457,9 @@ bool ReadCSVTime::isBiggerThanTimeInterval(char time_str[50])
 int ReadCSVTime::ReadASCIIDataInDirectory(const std::string &filePath,
     std::vector<float> &allXData,
     std::vector<float> &allYData,
-    std::vector<float> &allZData)
+    std::vector<float> &allZData,
+    std::vector<std::vector<float>> &allData,
+    int filenumber)
 {
     FILE *dataFile = fopen(filePath.c_str(), "r");
     if (!dataFile)
@@ -456,7 +497,8 @@ int ReadCSVTime::ReadASCIIDataInDirectory(const std::string &filePath,
     char time_str[50];
 
     int row = 0;
-
+    int portNum = 0;
+    int posData;
     while (fgets(buffer, sizeof(buffer), dataFile) != NULL) // goes through each line in file (row wise)
     {
         std::vector<float> tmpdat(varInfos.size(), 0.0f);
@@ -479,11 +521,33 @@ int ReadCSVTime::ReadASCIIDataInDirectory(const std::string &filePath,
         takeRow = isBiggerThanTimeInterval(time_str);
         if (takeRow || row == 0)
         {
-            // Accumulate into global vectors instead of local ones
             allXData.push_back(tmpdat[col_for_x]);
             allYData.push_back(tmpdat[col_for_y]);
             allZData.push_back(tmpdat[col_for_z]);
-            row++;
+
+            // create one new inner vector for this accepted timestep, but just once when the first file is created
+            posData = READER_CONTROL->getPortChoice(DPORT1_3D + portNum) - 1;
+            if (filenumber == 0)
+            {
+                allData.emplace_back();
+                std::vector<float> &nthtimestep = allData.back();
+
+                if(posData >= 0){
+                    std::cout << "Reading file in readASCIIDataInDirectory: " << filePath << " for port " << portNum << " with column: " << posData << std::endl;
+                    nthtimestep.push_back(tmpdat[posData]);
+                }
+            }
+            else
+            {
+                std::cout << "reading Data in column: " << posData << std::endl;
+
+                if (posData >= 0)
+                    allData[row].push_back(tmpdat[posData]);
+            }
+            // std::vector<float> &nthtimestep = allData.back();
+            //  Read Data from Ports:
+            //  TODO: iterate over ports
+            ++row;
         }
     }
 

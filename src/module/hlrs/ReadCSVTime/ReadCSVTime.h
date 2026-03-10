@@ -74,13 +74,16 @@ private:
     int ReadASCIIDataInDirectory(const std::string &filePath,
         std::vector<float> &allXData,
         std::vector<float> &allYData,
-        std::vector<float> &allZData);
+        std::vector<float> &allZData,
+        std::vector<std::vector<float>> &allData,
+        int filenumber);
     bool isBiggerThanTimeInterval(char time_str[50]);
 
     float *xPtr = nullptr;
     float *yPtr = nullptr;
     float *zPtr = nullptr;  
     int addDataToGridPort(std::vector<float> &xData, std::vector<float> &yData, std::vector<float> &zData);
+    int addDataToDataPort(std::vector<std::vector<float>> &data, int portNum);
 
     // already opened file, always rewound after use
     FILE *d_dataFile;
