@@ -70,17 +70,17 @@ private:
     std::string getNthFileFromDirectory(const std::string &dirPath, size_t n);
     int readDirectory(const char *dirName);
 
-    //this function can be combined with readAsCIIData, but for better readability and to avoid different behavior while changing reading files from directory, it is separated
+    // this function can be combined with readAsCIIData, but for better readability and to avoid different behavior while changing reading files from directory, it is separated
     int ReadASCIIDataInDirectory(const std::string &filePath,
-                                          std::vector<float> &allXData,
-                                          std::vector<float> &allYData,
-                                          std::vector<float> &allZData);
+        std::vector<float> &allXData,
+        std::vector<float> &allYData,
+        std::vector<float> &allZData);
     bool isBiggerThanTimeInterval(char time_str[50]);
 
     float *xPtr = nullptr;
     float *yPtr = nullptr;
-    float *zPtr = nullptr;
-    int addDataToGridPort(const std::vector<float> &xData, const std::vector<float> &yData, const std::vector<float> &zData);
+    float *zPtr = nullptr;  
+    int addDataToGridPort(std::vector<float> &xData, std::vector<float> &yData, std::vector<float> &zData);
 
     // already opened file, always rewound after use
     FILE *d_dataFile;

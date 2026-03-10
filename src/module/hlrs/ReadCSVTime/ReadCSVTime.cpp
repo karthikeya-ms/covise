@@ -290,7 +290,7 @@ static bool isCSVFile(const std::string &filename)
     // ignore hidden / lock / backup files
     if (name.empty())
         return false;
-    if (name[0] == '.')                 // .*, including .~lock...
+    if (name[0] == '.') // .*, including .~lock...
         return false;
 
     return true;
@@ -305,15 +305,15 @@ int ReadCSVTime::readDirectory(const char *dirName)
     global_last_t = 0;
     global_last_millisec = 0.0f;
 
+    coDirectory *dir = coDirectory::open(dirName);
+
     // Accumulate data across all files
     std::vector<float> allXData;
     std::vector<float> allYData;
     std::vector<float> allZData;
-    allXData.reserve(numRows * 2);  // Reserve extra space
-    allYData.reserve(numRows * 2);
-    allZData.reserve(numRows * 2);
-
-    coDirectory *dir = coDirectory::open(dirName);
+    allXData.reserve(numRows * dir->count()); // Reserve extra space
+    allYData.reserve(numRows * dir->count());
+    allZData.reserve(numRows * dir->count());
 
     for (int i = 0; i < dir->count(); i++)
     {
@@ -334,23 +334,22 @@ int ReadCSVTime::readDirectory(const char *dirName)
         }
     }
 
-    // Call addDataToGridPort ONCE after all files are read
     addDataToGridPort(allXData, allYData, allZData);
 
     return CONTINUE_PIPELINE;
 }
 
-int ReadCSVTime::addDataToGridPort(const std::vector<float> &xData,
-                                   const std::vector<float> &yData,
-                                   const std::vector<float> &zData)
+int ReadCSVTime::addDataToGridPort(std::vector<float> &xData,
+    std::vector<float> &yData,
+    std::vector<float> &zData)
 {
-    const size_t n = std::min({xData.size(), yData.size(), zData.size()});
+    const size_t n = std::min({ xData.size(), yData.size(), zData.size() });
     if (n == 0)
         return STOP_PIPELINE;
 
     std::string name_extension;
-    if (time_col->getValue() - 1 >= 0)
-        name_extension = "_tmp";
+    // if (time_col->getValue() - 1 >= 0)
+    //     name_extension = "_tmp";
 
     std::string objNameBase = READER_CONTROL->getAssocObjName(MESHPORT3D);
     sprintf(buf, "%s%s", objNameBase.c_str(), name_extension.c_str());
@@ -362,6 +361,8 @@ int ReadCSVTime::addDataToGridPort(const std::vector<float> &xData,
     std::copy_n(xData.data(), n, xPtr);
     std::copy_n(yData.data(), n, yPtr);
     std::copy_n(zData.data(), n, zPtr);
+
+    //grid->addAttribute("TIMESTEP", buf);
 
     return CONTINUE_PIPELINE;
 }
@@ -415,9 +416,9 @@ bool ReadCSVTime::isBiggerThanTimeInterval(char time_str[50])
 }
 
 int ReadCSVTime::ReadASCIIDataInDirectory(const std::string &filePath,
-                                          std::vector<float> &allXData,
-                                          std::vector<float> &allYData,
-                                          std::vector<float> &allZData)
+    std::vector<float> &allXData,
+    std::vector<float> &allYData,
+    std::vector<float> &allZData)
 {
     FILE *dataFile = fopen(filePath.c_str(), "r");
     if (!dataFile)
@@ -453,9 +454,9 @@ int ReadCSVTime::ReadASCIIDataInDirectory(const std::string &filePath,
     char buffer[5000];
     char *columnbuf;
     char time_str[50];
-    
+
     int row = 0;
-    
+
     while (fgets(buffer, sizeof(buffer), dataFile) != NULL) // goes through each line in file (row wise)
     {
         std::vector<float> tmpdat(varInfos.size(), 0.0f);
@@ -470,11 +471,11 @@ int ReadCSVTime::ReadASCIIDataInDirectory(const std::string &filePath,
             sscanf(columnbuf, "%f", &tmpdat[col]);
             if (col == col_for_time)
                 sscanf(columnbuf, "%[^\n]s", time_str);
-            
+
             col++;
             columnbuf = strtok(NULL, ";,");
         }
-        
+
         takeRow = isBiggerThanTimeInterval(time_str);
         if (takeRow || row == 0)
         {
