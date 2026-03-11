@@ -81,7 +81,9 @@ private:
 
     float *xPtr = nullptr;
     float *yPtr = nullptr;
-    float *zPtr = nullptr;  
+    float *zPtr = nullptr;
+    std::vector<std::vector<float>> allData;
+    float *ptr = nullptr;  
     int addDataToGridPort(std::vector<float> &xData, std::vector<float> &yData, std::vector<float> &zData);
     int addDataToDataPort(std::vector<std::vector<float>> &data, int portNum);
 

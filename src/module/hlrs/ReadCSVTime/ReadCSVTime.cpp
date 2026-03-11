@@ -311,11 +311,17 @@ int ReadCSVTime::readDirectory(const char *dirName)
     std::vector<float> allXData;
     std::vector<float> allYData;
     std::vector<float> allZData;
-    std::vector<std::vector<float>> allData;
+
     allXData.reserve(numRows * dir->count()); // Reserve extra space
     allYData.reserve(numRows * dir->count());
     allZData.reserve(numRows * dir->count());
-    allData.reserve(numRows);
+    // reserve+resize outer (rows/timesteps)
+    allData.clear();
+    allData.resize(numRows); // because you index with allData[row]
+
+    // reserve inner capacity (one value per file for each timestep row)
+    for (auto &timeVec : allData)
+        timeVec.reserve(dir->count());
 
     int filenumber = 0;
     for (int i = 0; i < dir->count(); i++)
@@ -392,7 +398,7 @@ int ReadCSVTime::addDataToDataPort(std::vector<std::vector<float>> &data, int po
         sprintf(buf, "%s%s", objNameBase.c_str(), name_extension.c_str());
 
         coDoFloat *obj = new coDoFloat(buf, static_cast<int>(data[i].size()));
-        float *ptr = nullptr;
+
         obj->getAddress(&ptr);
         std::copy(data[i].begin(), data[i].end(), ptr);
 
@@ -430,20 +436,31 @@ bool ReadCSVTime::isBiggerThanTimeInterval(char time_str[50])
         break;
     case 4: // "01-Jan 08:15:00.000"
         char month_str[4];
-        sscanf(time_str, "%2s %*d %*d:%*d:%*f", month_str);
+        sscanf(time_str, "%d-%3s %d:%d:%d.%f", &tm.tm_mday, month_str, &tm.tm_hour, &tm.tm_min, &tm.tm_sec, &millisec);
         tm.tm_mon = monthNameToNumber(month_str);
         strptime(time_str, "%d-%b %H:%M:%S.%f", &tm);
+        // year is not given in this format -> set to 2025
+        tm.tm_year = 125; // 2025 - 1900
         break;
     default:
         return true; // If format is unknown, treat as if interval has passed
     }
 
     time_t t = mktime(&tm);
+    printf("Time: %s\n", asctime(&tm));
+    std::cout << "Time in seconds since epoch: " << t << ", milliseconds: " << millisec << std::endl;
 
     // Calculate difference in seconds
-    double diff_sec = difftime(t, global_last_t) + (millisec - global_last_millisec) / 1000.0;
+    double time_diff = difftime(t, global_last_t);
 
-    bool res = diff_sec >= interval_size_sec;
+    const double EPSILON = 1e-9;
+
+    if (fabs(time_diff) < EPSILON)
+    {
+        time_diff = millisec / 1000.0f - global_last_millisec / 1000.0f;
+    }
+
+    bool res = time_diff >= interval_size_sec;
 
     if (res)
     {
@@ -527,23 +544,24 @@ int ReadCSVTime::ReadASCIIDataInDirectory(const std::string &filePath,
 
             // create one new inner vector for this accepted timestep, but just once when the first file is created
             posData = READER_CONTROL->getPortChoice(DPORT1_3D + portNum) - 1;
-            if (filenumber == 0)
-            {
-                allData.emplace_back();
-                std::vector<float> &nthtimestep = allData.back();
+            // if (filenumber == 0)
+            // {
+            //     allData.emplace_back();
+            //     std::vector<float> &nthtimestep = allData.back();
+            //     allData.back().reserve(dir->count());
 
-                if(posData >= 0){
-                    std::cout << "Reading file in readASCIIDataInDirectory: " << filePath << " for port " << portNum << " with column: " << posData << std::endl;
-                    nthtimestep.push_back(tmpdat[posData]);
-                }
-            }
-            else
-            {
-                std::cout << "reading Data in column: " << posData << std::endl;
+            //     if(posData >= 0){
+            //         std::cout << "Reading file in readASCIIDataInDirectory: " << filePath << " for port " << portNum << " with column: " << posData << std::endl;
+            //         nthtimestep.push_back(tmpdat[posData]);
+            //     }
+            // }
+            // else
+            // {
+            std::cout << "reading Data in column: " << posData << std::endl;
 
-                if (posData >= 0)
-                    allData[row].push_back(tmpdat[posData]);
-            }
+            if (posData >= 0)
+                allData[row].push_back(tmpdat[posData]);
+            //}
             // std::vector<float> &nthtimestep = allData.back();
             //  Read Data from Ports:
             //  TODO: iterate over ports
