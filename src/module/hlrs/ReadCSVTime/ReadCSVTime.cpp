@@ -316,11 +316,19 @@ int ReadCSVTime::readDirectory(const char *dirName)
     allYData.reserve(numRows * dir->count());
     allZData.reserve(numRows * dir->count());
     // reserve+resize outer (rows/timesteps)
-    allData.clear();
-    allData.resize(numRows); // because you index with allData[row]
+    allData1.clear();
+    allData1.resize(numRows); // because you index with allData[row]
+    allData2.clear();
+    allData2.resize(numRows);
+    allData3.clear();
+    allData3.resize(numRows);
 
     // reserve inner capacity (one value per file for each timestep row)
-    for (auto &timeVec : allData)
+    for (auto &timeVec : allData1)
+        timeVec.reserve(dir->count());
+    for (auto &timeVec : allData2)
+        timeVec.reserve(dir->count());
+    for (auto &timeVec : allData3)
         timeVec.reserve(dir->count());
 
     int filenumber = 0;
@@ -335,7 +343,7 @@ int ReadCSVTime::readDirectory(const char *dirName)
         {
             std::cout << "Reading file in readDirectory: " << fileStr << std::endl;
             // Pass vectors by reference so data accumulates
-            ReadASCIIDataInDirectory(fileStr, allXData, allYData, allZData, allData, filenumber);
+            ReadASCIIDataInDirectory(fileStr, allXData, allYData, allZData, filenumber);
             filenumber++;
         }
         catch (...)
@@ -346,7 +354,9 @@ int ReadCSVTime::readDirectory(const char *dirName)
 
     addDataToGridPort(allXData, allYData, allZData);
     // TODO: iterate over ports and add data
-    addDataToDataPort(allData, DPORT1_3D);
+    addDataToDataPort(allData1, DPORT1_3D);
+    addDataToDataPort(allData2, DPORT2_3D);
+    addDataToDataPort(allData3, DPORT3_3D);
 
     return CONTINUE_PIPELINE;
 }
@@ -447,9 +457,7 @@ bool ReadCSVTime::isBiggerThanTimeInterval(char time_str[50])
     }
 
     time_t t = mktime(&tm);
-    printf("Time: %s\n", asctime(&tm));
-    std::cout << "Time in seconds since epoch: " << t << ", milliseconds: " << millisec << std::endl;
-
+    
     // Calculate difference in seconds
     double time_diff = difftime(t, global_last_t);
 
@@ -475,7 +483,6 @@ int ReadCSVTime::ReadASCIIDataInDirectory(const std::string &filePath,
     std::vector<float> &allXData,
     std::vector<float> &allYData,
     std::vector<float> &allZData,
-    std::vector<std::vector<float>> &allData,
     int filenumber)
 {
     FILE *dataFile = fopen(filePath.c_str(), "r");
@@ -515,7 +522,9 @@ int ReadCSVTime::ReadASCIIDataInDirectory(const std::string &filePath,
 
     int row = 0;
     int portNum = 0;
-    int posData;
+    int posData1 = -1;
+    int posData2 = -1;
+    int posData3 = -1;
     while (fgets(buffer, sizeof(buffer), dataFile) != NULL) // goes through each line in file (row wise)
     {
         std::vector<float> tmpdat(varInfos.size(), 0.0f);
@@ -543,7 +552,7 @@ int ReadCSVTime::ReadASCIIDataInDirectory(const std::string &filePath,
             allZData.push_back(tmpdat[col_for_z]);
 
             // create one new inner vector for this accepted timestep, but just once when the first file is created
-            posData = READER_CONTROL->getPortChoice(DPORT1_3D + portNum) - 1;
+            posData1 = READER_CONTROL->getPortChoice(DPORT1_3D + portNum) - 1;
             // if (filenumber == 0)
             // {
             //     allData.emplace_back();
@@ -557,10 +566,16 @@ int ReadCSVTime::ReadASCIIDataInDirectory(const std::string &filePath,
             // }
             // else
             // {
-            std::cout << "reading Data in column: " << posData << std::endl;
+            std::cout << "reading Data in column: " << posData1 << std::endl;
 
-            if (posData >= 0)
-                allData[row].push_back(tmpdat[posData]);
+            if (posData1 >= 0)
+                allData1[row].push_back(tmpdat[posData1]);
+
+            if (posData2 >= 0)
+                allData2[row].push_back(tmpdat[posData2]);
+
+            if (posData3 >= 0)
+                allData3[row].push_back(tmpdat[posData3]);
             //}
             // std::vector<float> &nthtimestep = allData.back();
             //  Read Data from Ports:
