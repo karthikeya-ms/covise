@@ -354,6 +354,9 @@ int ReadCSVTime::readDirectory(const char *dirName)
 
     addDataToGridPort(allXData, allYData, allZData);
     // TODO: iterate over ports and add data
+    std::cout << "Size of allData1: " << allData1.size() << std::endl;
+    std::cout << "Size of allData2: " << allData2.size() << std::endl;
+    std::cout << "Size of allData3: " << allData3.size() << std::endl;
     addDataToDataPort(allData1, DPORT1_3D);
     addDataToDataPort(allData2, DPORT2_3D);
     addDataToDataPort(allData3, DPORT3_3D);
@@ -401,6 +404,7 @@ int ReadCSVTime::addDataToDataPort(std::vector<std::vector<float>> &data, int po
 
     std::vector<coDistributedObject *> elems(data.size() + 1, nullptr); // last must be null
 
+    int pos = READER_CONTROL->getPortChoice(portNum); // 1-based column index, 0 = NONE
     for (size_t i = 0; i < data.size(); ++i)
     {
         char name[50];
@@ -413,11 +417,22 @@ int ReadCSVTime::addDataToDataPort(std::vector<std::vector<float>> &data, int po
         std::copy(data[i].begin(), data[i].end(), ptr);
 
         elems[i] = obj;
+
+        //obj->getAddress(&varInfos[pos - 1].x_d);
     }
 
-    coDoSet *setObj = new coDoSet(READER_CONTROL->getAssocObjName(DPORT1_3D).c_str(), elems.data());
+    coDoSet *setObj = new coDoSet(READER_CONTROL->getAssocObjName(portNum).c_str(), elems.data());
     // optional for timesteps:
     setObj->addAttribute("TIMESTEP", buf);
+
+    if (pos > 0 && pos <= static_cast<int>(varInfos.size()))
+    {
+        if (!varInfos[pos - 1].dataObjs)
+            varInfos[pos - 1].dataObjs = new coDistributedObject *[1] { nullptr };
+
+        varInfos[pos - 1].assoc = 1;
+        varInfos[pos - 1].dataObjs[0] = setObj; // setObj from your addDataToDataPort
+    }
 
     return CONTINUE_PIPELINE;
 }
@@ -457,7 +472,7 @@ bool ReadCSVTime::isBiggerThanTimeInterval(char time_str[50])
     }
 
     time_t t = mktime(&tm);
-    
+
     // Calculate difference in seconds
     double time_diff = difftime(t, global_last_t);
 
@@ -861,7 +876,6 @@ int ReadCSVTime::readASCIIData(const std::string &filePath)
             }
             sendInfo("Found %d time intervals", timeInt);
 
-            // Use vector instead of raw pointer array
             std::vector<coDistributedObject *> time_outdat(timeInt + 1, nullptr);
             std::vector<coDistributedObject *> time_outdat_grid(timeInt + 1, nullptr);
 
