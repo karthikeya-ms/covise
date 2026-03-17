@@ -405,6 +405,23 @@ int ReadCSVTime::addDataToDataPort(std::vector<std::vector<float>> &data, int po
     std::vector<coDistributedObject *> elems(data.size() + 1, nullptr); // last must be null
 
     int pos = READER_CONTROL->getPortChoice(portNum); // 1-based column index, 0 = NONE
+    size_t nonEmptyTimesteps = 0;
+    size_t largestTimestepSize = 0;
+    for (const auto &timeVec : data)
+    {
+        if (!timeVec.empty())
+            ++nonEmptyTimesteps;
+        largestTimestepSize = std::max(largestTimestepSize, timeVec.size());
+    }
+
+    std::cerr << "[ReadCSVTime DEBUG] Enter addDataToDataPort"
+              << " | portNum=" << portNum
+              << " | selectedChoice=" << pos
+              << " | outerVectorSize=" << data.size()
+              << " | firstTimestepSize=" << (data.empty() ? 0 : data.front().size())
+              << " | nonEmptyTimesteps=" << nonEmptyTimesteps
+              << " | largestTimestepSize=" << largestTimestepSize
+              << std::endl;
     for (size_t i = 0; i < data.size(); ++i)
     {
         char name[50];
@@ -427,12 +444,23 @@ int ReadCSVTime::addDataToDataPort(std::vector<std::vector<float>> &data, int po
 
     if (pos > 0 && pos <= static_cast<int>(varInfos.size()))
     {
+        std::cerr << "[ReadCSVTime DEBUG] Selected variable before pointer check"
+                  << " | varInfoIndex=" << (pos - 1)
+                  << " | name=" << varInfos[pos - 1].name
+                  << " | assoc=" << varInfos[pos - 1].assoc
+                  << " | dataObjsPtr=" << static_cast<void *>(varInfos[pos - 1].dataObjs)
+                  << " | note=" << (varInfos[pos - 1].dataObjs ? "NON-NULL pointer before allocation" : "nullptr before allocation")
+                  << std::endl;
         if (!varInfos[pos - 1].dataObjs)
             varInfos[pos - 1].dataObjs = new coDistributedObject *[1] { nullptr };
 
         varInfos[pos - 1].assoc = 1;
         varInfos[pos - 1].dataObjs[0] = setObj; // setObj from your addDataToDataPort
     }
+
+    std::cerr << "[ReadCSVTime DEBUG] Leave addDataToDataPort"
+              << " | portNum=" << portNum
+              << std::endl;
 
     return CONTINUE_PIPELINE;
 }
@@ -540,6 +568,7 @@ int ReadCSVTime::ReadASCIIDataInDirectory(const std::string &filePath,
     int posData1 = -1;
     int posData2 = -1;
     int posData3 = -1;
+    int acceptedRows = 0;
     while (fgets(buffer, sizeof(buffer), dataFile) != NULL) // goes through each line in file (row wise)
     {
         std::vector<float> tmpdat(varInfos.size(), 0.0f);
@@ -596,8 +625,17 @@ int ReadCSVTime::ReadASCIIDataInDirectory(const std::string &filePath,
             //  Read Data from Ports:
             //  TODO: iterate over ports
             ++row;
+            ++acceptedRows;
         }
     }
+
+    std::cerr << "[ReadCSVTime DEBUG] Directory file summary"
+              << " | file=" << filePath
+              << " | acceptedRows=" << acceptedRows
+              << " | selectedColumns(data1,data2,data3)=(" << posData1 << "," << posData2 << "," << posData3 << ")"
+              << " | finalRowCounter=" << row
+              << " | note=" << ((posData2 < 0 || posData3 < 0) ? "one or more output ports were not selected/populated" : "all three output ports selected")
+              << std::endl;
 
     fclose(dataFile);
     return CONTINUE_PIPELINE;
