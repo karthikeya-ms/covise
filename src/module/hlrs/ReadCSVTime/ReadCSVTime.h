@@ -75,7 +75,8 @@ private:
         std::vector<float> &allXData,
         std::vector<float> &allYData,
         std::vector<float> &allZData,
-        int filenumber);
+        int filenumber,
+        std::vector<char> &dropRow);
     bool isBiggerThanTimeInterval(char time_str[50]);
 
     float *xPtr = nullptr;
@@ -87,6 +88,9 @@ private:
     float *ptr = nullptr;  
     int addDataToGridPort(std::vector<float> &xData, std::vector<float> &yData, std::vector<float> &zData);
     int addDataToDataPort(std::vector<std::vector<float>> &data, int portNum);
+
+    void compactRows(std::vector<float> &v, const std::vector<char> &drop);
+    void compactRows(std::vector<std::vector<float>> &v, const std::vector<char> &drop);
 
     // already opened file, always rewound after use
     FILE *d_dataFile;

@@ -308,6 +308,8 @@ int ReadCSVTime::readDirectory(const char *dirName)
 
     coDirectory *dir = coDirectory::open(dirName);
 
+    // one row-mask for all files
+    std::vector<char> dropRow(numRows, 0);
     // Accumulate data across all files
     std::vector<float> allXData;
     std::vector<float> allYData;
@@ -346,7 +348,7 @@ int ReadCSVTime::readDirectory(const char *dirName)
             // Pass vectors by reference so data accumulates
             global_last_t = 0;
             global_last_millisec = 0.0f;
-            ReadASCIIDataInDirectory(fileStr, allXData, allYData, allZData, filenumber);
+            ReadASCIIDataInDirectory(fileStr, allXData, allYData, allZData, filenumber, dropRow);
             filenumber++;
         }
         catch (...)
@@ -355,11 +357,12 @@ int ReadCSVTime::readDirectory(const char *dirName)
         }
     }
 
+    // remove rows that were NaN in any file
+    compactRows(allData1, dropRow);
+    compactRows(allData2, dropRow);
+    compactRows(allData3, dropRow);
+
     addDataToGridPort(allXData, allYData, allZData);
-    // TODO: iterate over ports and add data
-    std::cout << "Size of allData1: " << allData1.size() << std::endl;
-    std::cout << "Size of allData2: " << allData2.size() << std::endl;
-    std::cout << "Size of allData3: " << allData3.size() << std::endl;
     addDataToDataPort(allData1, DPORT1_3D);
     addDataToDataPort(allData2, DPORT2_3D);
     addDataToDataPort(allData3, DPORT3_3D);
@@ -407,7 +410,7 @@ int ReadCSVTime::addDataToDataPort(std::vector<std::vector<float>> &data, int po
 
     std::vector<coDistributedObject *> elems(data.size() + 1, nullptr); // last must be null
 
-    int pos = READER_CONTROL->getPortChoice(portNum); // 1-based column index, 0 = NONE
+    int pos = READER_CONTROL->getPortChoice(portNum) - 1; // 1-based column index, 0 = NONE
     size_t nonEmptyTimesteps = 0;
     size_t largestTimestepSize = 0;
     for (const auto &timeVec : data)
@@ -444,33 +447,33 @@ int ReadCSVTime::addDataToDataPort(std::vector<std::vector<float>> &data, int po
     coDoSet *setObj = new coDoSet(READER_CONTROL->getAssocObjName(portNum).c_str(), elems.data());
 
     // initialize varInfos for this port
-    varInfos[pos - 1].dataObjs = new coDistributedObject *[1];
-    varInfos[pos - 1].dataObjs[0] = NULL;
-    varInfos[pos - 1].assoc = 0;
+    varInfos[pos].dataObjs = new coDistributedObject *[1];
+    varInfos[pos].dataObjs[0] = NULL;
+    varInfos[pos].assoc = 0;
 
     // optional for timesteps:
     setObj->addAttribute("TIMESTEP", name);
 
     if (pos > 0 && pos <= static_cast<int>(varInfos.size()))
     {
-        if (!varInfos[pos - 1].dataObjs)
+        if (!varInfos[pos].dataObjs)
         {
-            varInfos[pos - 1].dataObjs = new coDistributedObject *[1] { nullptr };
-            varInfos[pos - 1].assoc = 0;
+            varInfos[pos].dataObjs = new coDistributedObject *[1] { nullptr };
+            varInfos[pos].assoc = 0;
         }
 
         std::cerr << "[ReadCSVTime DEBUG] Selected variable before pointer check"
-                  << " | varInfoIndex=" << (pos - 1)
-                  << " | name=" << varInfos[pos - 1].name
-                  << " | assoc=" << varInfos[pos - 1].assoc
-                  << " | dataObjsPtr=" << static_cast<void *>(varInfos[pos - 1].dataObjs)
-                  << " | note=" << (varInfos[pos - 1].dataObjs ? "NON-NULL pointer before allocation" : "nullptr before allocation")
+                  << " | varInfoIndex=" << (pos)
+                  << " | name=" << varInfos[pos].name
+                  << " | assoc=" << varInfos[pos].assoc
+                  << " | dataObjsPtr=" << static_cast<void *>(varInfos[pos].dataObjs)
+                  << " | note=" << (varInfos[pos].dataObjs ? "NON-NULL pointer before allocation" : "nullptr before allocation")
                   << std::endl;
 
-        if (varInfos[pos - 1].assoc == 0)
+        if (varInfos[pos].assoc == 0)
         {
-            varInfos[pos - 1].assoc = 1;
-            varInfos[pos - 1].dataObjs[0] = setObj; // setObj from your addDataToDataPort
+            varInfos[pos].assoc = 1;
+            varInfos[pos].dataObjs[0] = setObj; // setObj from your addDataToDataPort
         }
         else
         {
@@ -546,7 +549,8 @@ int ReadCSVTime::ReadASCIIDataInDirectory(const std::string &filePath,
     std::vector<float> &allXData,
     std::vector<float> &allYData,
     std::vector<float> &allZData,
-    int filenumber)
+    int filenumber,
+    std::vector<char> &dropRow)
 {
     FILE *dataFile = fopen(filePath.c_str(), "r");
     if (!dataFile)
@@ -632,18 +636,18 @@ int ReadCSVTime::ReadASCIIDataInDirectory(const std::string &filePath,
             {
                 std::cerr << "[ReadCSVTime DEBUG] Skipping row " << row
                           << " because selected data column contains NaN" << std::endl;
+                dropRow[row] = 1; // Mark this row for dropping
             }
-            else
-            {
-                if (posData1 >= 0)
-                    allData1[row].push_back(tmpdat[posData1]);
 
-                if (posData2 >= 0)
-                    allData2[row].push_back(tmpdat[posData2]);
+            if (posData1 >= 0)
+                allData1[row].push_back(tmpdat[posData1]);
 
-                if (posData3 >= 0)
-                    allData3[row].push_back(tmpdat[posData3]);
-            }
+            if (posData2 >= 0)
+                allData2[row].push_back(tmpdat[posData2]);
+
+            if (posData3 >= 0)
+                allData3[row].push_back(tmpdat[posData3]);
+
             ++row;
         }
     }
@@ -991,7 +995,6 @@ int ReadCSVTime::readASCIIData(const std::string &filePath)
 
         for (int n = 0; n < varInfos.size(); n++)
         {
-            delete[] varInfos[n].dataObjs;
             varInfos[n].assoc = 0;
         }
 
@@ -1060,6 +1063,24 @@ std::string ReadCSVTime::getFirstFileInDirectory(const std::string &dirPath)
             return fullPath;
     }
     return {};
+}
+
+void ReadCSVTime::compactRows(std::vector<std::vector<float>> &v, const std::vector<char> &drop)
+{
+    size_t w = 0;
+    for (size_t r = 0; r < v.size(); ++r)
+        if (!drop[r])
+            v[w++] = std::move(v[r]);
+    v.resize(w);
+}
+
+void ReadCSVTime::compactRows(std::vector<float> &v, const std::vector<char> &drop)
+{
+    size_t w = 0;
+    for (size_t r = 0; r < v.size(); ++r)
+        if (!drop[r])
+            v[w++] = v[r];
+    v.resize(w);
 }
 
 int main(int argc, char *argv[])
