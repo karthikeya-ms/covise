@@ -30,6 +30,7 @@
 #include <string>
 
 #include <errno.h>
+#include <cmath>
 
 #include <do/coDoData.h>
 #include <do/coDoSet.h>
@@ -343,6 +344,8 @@ int ReadCSVTime::readDirectory(const char *dirName)
         {
             std::cout << "Reading file in readDirectory: " << fileStr << std::endl;
             // Pass vectors by reference so data accumulates
+            global_last_t = 0;
+            global_last_millisec = 0.0f;
             ReadASCIIDataInDirectory(fileStr, allXData, allYData, allZData, filenumber);
             filenumber++;
         }
@@ -422,28 +425,40 @@ int ReadCSVTime::addDataToDataPort(std::vector<std::vector<float>> &data, int po
               << " | nonEmptyTimesteps=" << nonEmptyTimesteps
               << " | largestTimestepSize=" << largestTimestepSize
               << std::endl;
+    char name[50];
     for (size_t i = 0; i < data.size(); ++i)
     {
-        char name[50];
         std::string objNameBase = READER_CONTROL->getAssocObjName(portNum);
-        sprintf(buf, "%s%s", objNameBase.c_str(), name_extension.c_str());
+        sprintf(name, "%s%s", objNameBase.c_str(), name_extension.c_str());
 
-        coDoFloat *obj = new coDoFloat(buf, static_cast<int>(data[i].size()));
+        coDoFloat *obj = new coDoFloat(name, static_cast<int>(data[i].size()));
 
         obj->getAddress(&ptr);
         std::copy(data[i].begin(), data[i].end(), ptr);
 
         elems[i] = obj;
 
-        //obj->getAddress(&varInfos[pos - 1].x_d);
+        // obj->getAddress(&varInfos[pos - 1].x_d);
     }
 
     coDoSet *setObj = new coDoSet(READER_CONTROL->getAssocObjName(portNum).c_str(), elems.data());
+
+    // initialize varInfos for this port
+    varInfos[pos - 1].dataObjs = new coDistributedObject *[1];
+    varInfos[pos - 1].dataObjs[0] = NULL;
+    varInfos[pos - 1].assoc = 0;
+
     // optional for timesteps:
-    setObj->addAttribute("TIMESTEP", buf);
+    setObj->addAttribute("TIMESTEP", name);
 
     if (pos > 0 && pos <= static_cast<int>(varInfos.size()))
     {
+        if (!varInfos[pos - 1].dataObjs)
+        {
+            varInfos[pos - 1].dataObjs = new coDistributedObject *[1] { nullptr };
+            varInfos[pos - 1].assoc = 0;
+        }
+
         std::cerr << "[ReadCSVTime DEBUG] Selected variable before pointer check"
                   << " | varInfoIndex=" << (pos - 1)
                   << " | name=" << varInfos[pos - 1].name
@@ -451,11 +466,16 @@ int ReadCSVTime::addDataToDataPort(std::vector<std::vector<float>> &data, int po
                   << " | dataObjsPtr=" << static_cast<void *>(varInfos[pos - 1].dataObjs)
                   << " | note=" << (varInfos[pos - 1].dataObjs ? "NON-NULL pointer before allocation" : "nullptr before allocation")
                   << std::endl;
-        if (!varInfos[pos - 1].dataObjs)
-            varInfos[pos - 1].dataObjs = new coDistributedObject *[1] { nullptr };
 
-        varInfos[pos - 1].assoc = 1;
-        varInfos[pos - 1].dataObjs[0] = setObj; // setObj from your addDataToDataPort
+        if (varInfos[pos - 1].assoc == 0)
+        {
+            varInfos[pos - 1].assoc = 1;
+            varInfos[pos - 1].dataObjs[0] = setObj; // setObj from your addDataToDataPort
+        }
+        else
+        {
+            sendWarning("Column %s already associated to port %d", varInfos[pos - 1].name.c_str(), portNum);
+        }
     }
 
     std::cerr << "[ReadCSVTime DEBUG] Leave addDataToDataPort"
@@ -563,12 +583,13 @@ int ReadCSVTime::ReadASCIIDataInDirectory(const std::string &filePath,
     char *columnbuf;
     char time_str[50];
 
-    int row = 0;
+    int row = 0; // counts accepted rows
     int portNum = 0;
-    int posData1 = -1;
-    int posData2 = -1;
-    int posData3 = -1;
-    int acceptedRows = 0;
+
+    int posData1 = READER_CONTROL->getPortChoice(DPORT1_3D) - 1;
+    int posData2 = READER_CONTROL->getPortChoice(DPORT2_3D) - 1;
+    int posData3 = READER_CONTROL->getPortChoice(DPORT3_3D) - 1;
+
     while (fgets(buffer, sizeof(buffer), dataFile) != NULL) // goes through each line in file (row wise)
     {
         std::vector<float> tmpdat(varInfos.size(), 0.0f);
@@ -595,45 +616,42 @@ int ReadCSVTime::ReadASCIIDataInDirectory(const std::string &filePath,
             allYData.push_back(tmpdat[col_for_y]);
             allZData.push_back(tmpdat[col_for_z]);
 
-            // create one new inner vector for this accepted timestep, but just once when the first file is created
-            posData1 = READER_CONTROL->getPortChoice(DPORT1_3D + portNum) - 1;
-            // if (filenumber == 0)
-            // {
-            //     allData.emplace_back();
-            //     std::vector<float> &nthtimestep = allData.back();
-            //     allData.back().reserve(dir->count());
-
-            //     if(posData >= 0){
-            //         std::cout << "Reading file in readASCIIDataInDirectory: " << filePath << " for port " << portNum << " with column: " << posData << std::endl;
-            //         nthtimestep.push_back(tmpdat[posData]);
-            //     }
-            // }
-            // else
-            // {
             std::cout << "reading Data in column: " << posData1 << std::endl;
 
-            if (posData1 >= 0)
-                allData1[row].push_back(tmpdat[posData1]);
+            // only filter NaN values (0.0 is valid)
+            auto isNaNAt = [&](int idx) -> bool
+            {
+                if (idx < 0) // port not selected
+                    return false;
+                if (idx >= static_cast<int>(tmpdat.size())) // safety
+                    return true;
+                return std::isnan(tmpdat[idx]);
+            };
 
-            if (posData2 >= 0)
-                allData2[row].push_back(tmpdat[posData2]);
+            if (isNaNAt(posData1) || isNaNAt(posData2) || isNaNAt(posData3))
+            {
+                std::cerr << "[ReadCSVTime DEBUG] Skipping row " << row
+                          << " because selected data column contains NaN" << std::endl;
+            }
+            else
+            {
+                if (posData1 >= 0)
+                    allData1[row].push_back(tmpdat[posData1]);
 
-            if (posData3 >= 0)
-                allData3[row].push_back(tmpdat[posData3]);
-            //}
-            // std::vector<float> &nthtimestep = allData.back();
-            //  Read Data from Ports:
-            //  TODO: iterate over ports
+                if (posData2 >= 0)
+                    allData2[row].push_back(tmpdat[posData2]);
+
+                if (posData3 >= 0)
+                    allData3[row].push_back(tmpdat[posData3]);
+            }
             ++row;
-            ++acceptedRows;
         }
     }
 
     std::cerr << "[ReadCSVTime DEBUG] Directory file summary"
               << " | file=" << filePath
-              << " | acceptedRows=" << acceptedRows
               << " | selectedColumns(data1,data2,data3)=(" << posData1 << "," << posData2 << "," << posData3 << ")"
-              << " | finalRowCounter=" << row
+              << " | acceptedRows=" << row
               << " | note=" << ((posData2 < 0 || posData3 < 0) ? "one or more output ports were not selected/populated" : "all three output ports selected")
               << std::endl;
 
