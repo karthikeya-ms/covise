@@ -26,6 +26,8 @@ using namespace opencover;
 namespace
 {
 const char *FollowAttribute = "FOLLOW_OBJECT";
+constexpr double MinHeadingDistance = 0.02;
+constexpr int MaxHeadingWindow = 250;
 }
 
 FollowObjectPlugin::FollowObjectPlugin()
@@ -319,16 +321,19 @@ void FollowObjectPlugin::updateInstance(Instance &instance, int timestep)
     if (instance.followHeading && instance.positions.size() > 1)
     {
         osg::Vec3d dir;
-        if (clampedTimestep + 1 < static_cast<int>(instance.positions.size()))
+        const int lastIndex = static_cast<int>(instance.positions.size()) - 1;
+        for (int window = 1; window <= MaxHeadingWindow; ++window)
         {
-            dir = instance.positions[clampedTimestep + 1] - pos;
-        }
-        else
-        {
-            dir = pos - instance.positions[clampedTimestep - 1];
+            const int prevIndex = std::max(0, clampedTimestep - window);
+            const int nextIndex = std::min(lastIndex, clampedTimestep + window);
+            dir = instance.positions[nextIndex] - instance.positions[prevIndex];
+            if (dir.length2() >= MinHeadingDistance * MinHeadingDistance)
+            {
+                break;
+            }
         }
 
-        if (dir.length2() > 1e-12)
+        if (dir.length2() >= MinHeadingDistance * MinHeadingDistance)
         {
             dir.normalize();
             instance.rotation.makeRotate(osg::Vec3d(1.0, 0.0, 0.0), dir);

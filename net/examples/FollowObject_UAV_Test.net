@@ -217,7 +217,7 @@ local model offset applied before rotation and translation
 follow_heading
 Boolean
 rotate the object to face the direction of motion
-TRUE
+FALSE
 
 -1
 0
