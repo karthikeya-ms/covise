@@ -24,7 +24,7 @@ FollowObject::FollowObject(int argc, char **argv)
     m_pathIn = addInputPort("pathIn", "Points", "trajectory points or timestep points");
     m_pathOut = addOutputPort("pathOut", "Points", "trajectory tagged for FollowObject OpenCOVER plugin");
 
-    m_modelFile = addFileBrowserParam("model_file", "optional object file; leave empty to use the built-in placeholder UAV");
+    m_modelFile = addFileBrowserParam("model_file", "optional object file; leave empty to use the built-in quadcopter placeholder");
     m_modelFile->setValue("", "*");
 
     m_scale = addFloatParam("scale", "uniform scale applied in OpenCOVER");

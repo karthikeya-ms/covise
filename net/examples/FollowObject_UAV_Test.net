@@ -192,20 +192,20 @@ default
 5
 model_file
 Browser
-optional object file; leave empty to use the built-in placeholder UAV
+optional object file; leave empty to use the built-in quadcopter placeholder
 
 
 -1
 model_file___filter
 BrowserFilter
-optional object file; leave empty to use the built-in placeholder UAV
+optional object file; leave empty to use the built-in quadcopter placeholder
 model_file *
 
 -1
 scale
 FloatScalar
 uniform scale applied in OpenCOVER
-1.0
+0.01
 
 -1
 offset

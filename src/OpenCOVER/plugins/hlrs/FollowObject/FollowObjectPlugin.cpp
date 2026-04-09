@@ -298,12 +298,23 @@ osg::ref_ptr<osg::Group> FollowObjectPlugin::createPlaceholderModel() const
     };
 
     osg::ref_ptr<osg::Group> model = new osg::Group();
-    model->setName("FollowObjectPlaceholder");
+    model->setName("FollowObjectDefaultQuadcopter");
     model->setDataVariance(osg::Object::DYNAMIC);
     model->setCullingActive(false);
 
-    const osg::Vec4 bodyColor(0.18f, 0.22f, 0.28f, 1.0f);
-    addPart(model.get(), new osg::Box(osg::Vec3(0.0f, 0.0f, 0.0f), 0.3f, 0.3f, 0.3f), bodyColor);
+    const osg::Vec4 armColor(0.18f, 0.22f, 0.28f, 1.0f);
+    const osg::Vec4 hubColor(0.28f, 0.34f, 0.42f, 1.0f);
+    const osg::Vec4 rotorColor(0.92f, 0.46f, 0.16f, 1.0f);
+
+    // Simple solid quadcopter placeholder: cross arms plus four rotor discs.
+    addPart(model.get(), new osg::Box(osg::Vec3(0.0f, 0.0f, 0.0f), 1.10f, 0.14f, 0.10f), armColor);
+    addPart(model.get(), new osg::Box(osg::Vec3(0.0f, 0.0f, 0.0f), 0.14f, 1.10f, 0.10f), armColor);
+    addPart(model.get(), new osg::Box(osg::Vec3(0.0f, 0.0f, 0.02f), 0.22f, 0.22f, 0.14f), hubColor);
+
+    addPart(model.get(), new osg::Cylinder(osg::Vec3(0.0f, 0.55f, 0.02f), 0.14f, 0.03f), rotorColor);
+    addPart(model.get(), new osg::Cylinder(osg::Vec3(0.0f, -0.55f, 0.02f), 0.14f, 0.03f), rotorColor);
+    addPart(model.get(), new osg::Cylinder(osg::Vec3(0.55f, 0.0f, 0.02f), 0.14f, 0.03f), rotorColor);
+    addPart(model.get(), new osg::Cylinder(osg::Vec3(-0.55f, 0.0f, 0.02f), 0.14f, 0.03f), rotorColor);
 
     return model;
 }
