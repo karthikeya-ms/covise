@@ -13,6 +13,7 @@
 
 #include <osg/Geode>
 #include <osg/Matrix>
+#include <osg/Quat>
 #include <osg/ShapeDrawable>
 #include <osgDB/ReadFile>
 
@@ -90,10 +91,14 @@ void FollowObjectPlugin::addObject(const RenderObject *container,
 
     instance.pose = new osg::MatrixTransform();
     instance.pose->setName("FollowObjectPose_" + instance.key);
+    instance.pose->setDataVariance(osg::Object::DYNAMIC);
+    instance.pose->setCullingActive(false);
     instance.pose->addChild(instance.model.get());
 
     instance.root = new osg::Group();
     instance.root->setName("FollowObjectRoot_" + instance.key);
+    instance.root->setDataVariance(osg::Object::DYNAMIC);
+    instance.root->setCullingActive(false);
     instance.root->addChild(instance.pose.get());
     cover->getObjectsRoot()->addChild(instance.root.get());
 
@@ -292,6 +297,8 @@ osg::ref_ptr<osg::Group> FollowObjectPlugin::createPlaceholderModel() const
 
     osg::ref_ptr<osg::Group> model = new osg::Group();
     model->setName("FollowObjectPlaceholder");
+    model->setDataVariance(osg::Object::DYNAMIC);
+    model->setCullingActive(false);
 
     const osg::Vec4 bodyColor(0.18f, 0.22f, 0.28f, 1.0f);
     addPart(model.get(), new osg::Box(osg::Vec3(0.0f, 0.0f, 0.0f), 0.3f, 0.3f, 0.3f), bodyColor);
@@ -309,8 +316,28 @@ void FollowObjectPlugin::updateInstance(Instance &instance, int timestep)
     const int clampedTimestep = std::max(0, std::min(timestep, static_cast<int>(instance.positions.size()) - 1));
     const osg::Vec3d pos = instance.positions[clampedTimestep];
 
+    if (instance.followHeading && instance.positions.size() > 1)
+    {
+        osg::Vec3d dir;
+        if (clampedTimestep + 1 < static_cast<int>(instance.positions.size()))
+        {
+            dir = instance.positions[clampedTimestep + 1] - pos;
+        }
+        else
+        {
+            dir = pos - instance.positions[clampedTimestep - 1];
+        }
+
+        if (dir.length2() > 1e-12)
+        {
+            dir.normalize();
+            instance.rotation.makeRotate(osg::Vec3d(1.0, 0.0, 0.0), dir);
+        }
+    }
+
     const osg::Matrix matrix =
         osg::Matrix::translate(pos)
+        * osg::Matrix::rotate(instance.rotation)
         * osg::Matrix::scale(instance.scale, instance.scale, instance.scale)
         * osg::Matrix::translate(instance.offset);
 

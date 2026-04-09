@@ -45,6 +45,7 @@ private:
         bool followHeading = true;
         double scale = 1.0;
         osg::Vec3d offset = osg::Vec3d(0.0, 0.0, 0.0);
+        osg::Quat rotation;
 
         osg::ref_ptr<osg::Group> root;
         osg::ref_ptr<osg::MatrixTransform> pose;
