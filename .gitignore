@@ -6,7 +6,6 @@
 /extern_libs/
 /.archsuffix-*
 /.envrc
-src/OpenCOVER/plugins/examples/Kite/flight.csv
 *:Zone.Identifier
 /*.vrbreg
 /coviseDaemon.settings
@@ -287,3 +286,4 @@ compile_commands.json
 /lionopt
 /libc++
 /libc++opt
+/.codex
