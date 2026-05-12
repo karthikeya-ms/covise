@@ -103,7 +103,7 @@ WINSENT::~WINSENT()
 
 bool WINSENT::init()
 {
-    const std::string dataPath = cfgString("DataPath", "/home/hpcsmand/MultiSensorSWE1");
+    const std::string dataPath = cfgString("DataPath", "/data/MERIDIONAL/simonsSensorData/MultiSensorSWE1");
 
     root_ = new osg::MatrixTransform();
     root_->setName("WINSENTWindFarmRoot");
