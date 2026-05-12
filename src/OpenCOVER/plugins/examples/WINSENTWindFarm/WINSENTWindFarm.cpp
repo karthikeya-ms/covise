@@ -41,6 +41,14 @@ namespace
 {
 const char *s_configRoot = "COVER.Plugin.WINSENTWindFarm";
 
+osg::Matrixd yUpToZUpMatrix()
+{
+    return osg::Matrixd(1.0, 0.0, 0.0, 0.0,
+                        0.0, 0.0, 1.0, 0.0,
+                        0.0, 1.0, 0.0, 0.0,
+                        0.0, 0.0, 0.0, 1.0);
+}
+
 std::string cfgString(const std::string &entry, const std::string &defaultValue)
 {
     return coCoviseConfig::getEntry("value", std::string(s_configRoot) + "." + entry, defaultValue);
@@ -147,20 +155,7 @@ bool WINSENT::loadTerrainLayer(const std::string &dataPath)
     }
 
     if (endsWith(terrainModel, ".obj"))
-    {
-        // OBJ is Y-up: swap Y/Z so it matches the Z-up frame used by
-        // LiDAR/UAV workflow transforms and mast placement.
-        osg::Matrixd swapYZ(1.0, 0.0, 0.0, 0.0,
-                            0.0, 0.0, 1.0, 0.0,
-                            0.0, 1.0, 0.0, 0.0,
-                            0.0, 0.0, 0.0, 1.0);
-        osg::ref_ptr<osg::MatrixTransform> terrainXform = new osg::MatrixTransform();
-        terrainXform->setName("WINSENTTerrainAxisSwap");
-        terrainXform->setMatrix(swapYZ);
-        terrainXform->addChild(terrainNode.get());
-        terrainNode = terrainXform;
-        std::cerr << "WINSENTWindFarm: applied OBJ->ZUp axis mapping (swap Y/Z)" << std::endl;
-    }
+        std::cerr << "WINSENTWindFarm: loaded OBJ terrain in native Y-up coordinates" << std::endl;
 
     terrainNode->setName("WINSENTTerrain");
     siteRoot_->addChild(terrainNode.get());
@@ -227,6 +222,12 @@ bool WINSENT::loadTerrainLayer(const std::string &dataPath)
         const double spanY = terrainMax_.y() - terrainMin_.y();
         const double spanZ = terrainMax_.z() - terrainMin_.z();
         terrainIsYUp_ = (spanY < spanZ);
+
+        if (terrainIsYUp_)
+        {
+            siteRoot_->setMatrix(yUpToZUpMatrix());
+            std::cerr << "WINSENTWindFarm: applied site-wide Y-up -> Z-up axis mapping (swap Y/Z)" << std::endl;
+        }
 
         std::cerr << "WINSENTWindFarm: terrain bounds min=("
                   << terrainMin_.x() << ", " << terrainMin_.y() << ", " << terrainMin_.z()
