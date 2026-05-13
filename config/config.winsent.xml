@@ -19,7 +19,6 @@
 
         <!-- Optional explicit files; otherwise plugin defaults to DataPath -->
         <TerrainModel value="/data/MERIDIONAL/simonsSensordata/MultiSensorSWE1/winsent_terrain_yup.obj" />
-        <TerrainModelFallback value="/data/MERIDIONAL/simonsSensordata/MultiSensorSWE1/winsent_terrain_yup.ive" />
         <!-- Global placement/scale -->
         <SceneScale value="1.0" />
         <ScenePosX value="0.0" />

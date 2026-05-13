@@ -49,9 +49,24 @@ osg::Matrixd yUpToZUpMatrix()
                         0.0, 0.0, 0.0, 1.0);
 }
 
+std::string cfgString(const std::string &entry)
+{
+    return coCoviseConfig::getEntry("value", std::string(s_configRoot) + "." + entry, std::string());
+}
+
 std::string cfgString(const std::string &entry, const std::string &defaultValue)
 {
-    return coCoviseConfig::getEntry("value", std::string(s_configRoot) + "." + entry, defaultValue);
+    const std::string value = cfgString(entry);
+    return value.empty() ? defaultValue : value;
+}
+
+std::string joinPath(const std::string &base, const std::string &fileName)
+{
+    if (base.empty() || fileName.empty())
+        return std::string();
+    if (base.back() == '/')
+        return base + fileName;
+    return base + "/" + fileName;
 }
 
 bool endsWith(const std::string &value, const std::string &suffix)
@@ -103,7 +118,12 @@ WINSENT::~WINSENT()
 
 bool WINSENT::init()
 {
-    const std::string dataPath = cfgString("DataPath", "/data/MERIDIONAL/simonsSensorData/MultiSensorSWE1");
+    const std::string dataPath = cfgString("DataPath");
+    if (dataPath.empty())
+    {
+        std::cerr << "WINSENTWindFarm: DataPath is not configured at " << s_configRoot << std::endl;
+        return false;
+    }
 
     root_ = new osg::MatrixTransform();
     root_->setName("WINSENTWindFarmRoot");
@@ -133,15 +153,13 @@ bool WINSENT::loadTerrainLayer(const std::string &dataPath)
     siteRoot_->setMatrix(osg::Matrixd::identity());
     root_->addChild(siteRoot_.get());
 
-    // Prefer textured OBJ terrain and map it into the same Z-up frame that the
-    // workflows use, so launch behavior is stable with/without COCONFIG.
-    const std::string terrainPreferred = cfgString("TerrainModel", dataPath + "/winsent_terrain_yup.obj");
-    const std::string terrainAlternative = cfgString("TerrainModelFallback", dataPath + "/winsent_terrain_yup.ive");
+    const std::string terrainPreferred = cfgString("TerrainModel", joinPath(dataPath, "winsent_terrain_yup.obj"));
+    const std::string terrainAlternative = cfgString("TerrainModelFallback");
 
     std::string terrainModel = terrainPreferred;
     osg::ref_ptr<osg::Node> terrainNode = loadTerrainModel(terrainModel);
 
-    if (!terrainNode.valid())
+    if (!terrainNode.valid() && !terrainAlternative.empty())
     {
         terrainModel = terrainAlternative;
         terrainNode = loadTerrainModel(terrainModel);
@@ -179,12 +197,13 @@ bool WINSENT::loadTerrainLayer(const std::string &dataPath)
     // Bind the orthophoto explicitly so terrain remains colored without COCONFIG.
     if (endsWith(terrainModel, ".ive"))
     {
-        std::string textureFile = cfgString("TerrainTexture", dataPath + "/OrthoPic.jpg");
+        std::string textureFile = cfgString("TerrainTexture", joinPath(dataPath, "OrthoPic.jpg"));
         osg::ref_ptr<osg::Image> image = osgDB::readRefImageFile(textureFile);
         if (!image.valid())
         {
-            textureFile = cfgString("TerrainTextureFallback", dataPath + "/OrthoPic.tiff");
-            image = osgDB::readRefImageFile(textureFile);
+            textureFile = cfgString("TerrainTextureFallback");
+            if (!textureFile.empty())
+                image = osgDB::readRefImageFile(textureFile);
         }
 
         if (image.valid())
@@ -259,8 +278,8 @@ bool WINSENT::loadMastLayer(const std::string &dataPath)
     if (!siteRoot_.valid())
         return false;
 
-    const std::string mastBaseFile = cfgString("MastBaseFile", dataPath + "/MetMastBaseXYZ.csv");
-    const std::string topologyFile = cfgString("TopologyFile", dataPath + "/Topology.csv");
+    const std::string mastBaseFile = cfgString("MastBaseFile", joinPath(dataPath, "MetMastBaseXYZ.csv"));
+    const std::string topologyFile = cfgString("TopologyFile", joinPath(dataPath, "Topology.csv"));
     constexpr float mastHeight = 100.0f;
     constexpr float mastWidth = 2.0f;
 
